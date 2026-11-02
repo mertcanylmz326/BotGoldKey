@@ -1,4 +1,2 @@
-flask
-python-telegram-bot
-gunicorn
-requests
+python-telegram-bot==21.10
+Flask==3.1.0
