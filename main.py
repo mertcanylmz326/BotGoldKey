@@ -155,7 +155,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (HASH GİRİŞ EKRANI İLE) ---
+# --- ARAYÜZ (UI/UX) HTML (GÜNCELLENMİŞ SERTİFİKA LİNKİ İLE) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -179,11 +179,9 @@ MINI_APP_HTML = """
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); padding: 10px; text-align: center; margin: 0; }
         
-        /* HASH GİRİŞ EKRANI MODALI (İLK AÇILIŞ) */
         #hashLoginScreen { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #07090e; z-index: 99999; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
         .login-box { background: #101726; border: 1px solid var(--accent-gold); padding: 25px; border-radius: 16px; max-width: 320px; width: 100%; box-shadow: 0 0 35px rgba(245,158,11,0.3); text-align: center; }
 
-        /* GÜVENLİK DUVARI (VPN VEYA GRUP ENGELİ) */
         #securityWall { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #07090e; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
         .wall-card { background: #101726; border: 1px solid var(--accent-red); padding: 25px; border-radius: 16px; max-width: 320px; width: 100%; box-shadow: 0 0 30px rgba(239,68,68,0.3); text-align: center; }
 
@@ -429,13 +427,14 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- GERÇEK SERTİFİKA FOTOĞRAFI MODALI -->
+    <!-- GERÇEK SERTİFİKA FOTOĞRAFI MODALI (YENİ LİNK İLE GÜNCELLENDİ) -->
     <div id="certModal" class="modal">
         <div class="modal-content" style="border-color: var(--accent-gold); background: #0b0f19; padding: 12px;">
             <span class="close-btn" onclick="document.getElementById('certModal').style.display='none'">&times;</span>
             <h3 style="color:var(--accent-gold); margin: 5px 0 10px 0; font-size: 13px;">🛡️ Swiss Vault Resmi Sigorta Poliçesi</h3>
             <div style="width: 100%; border: 2px solid var(--accent-gold); border-radius: 8px; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center;">
-                <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=" alt="Sertifika" style="width: 100%; height: auto; display: block;" id="certImgElement">
+                <!-- Gönderdiğin resim linki entegre edildi -->
+                <img src="https://imgyukle.com/i/SIb30Q" alt="Swiss Vault Sigorta Poliçesi" style="width: 100%; height: auto; display: block;" id="certImgElement">
             </div>
             <p style="font-size: 10px; color: var(--text-muted); margin-top: 8px;">Tüm likidite varlıklarınız İsviçre Londra Havuzu güvencesindedir.</p>
         </div>
@@ -499,7 +498,6 @@ MINI_APP_HTML = """
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
-        // --- HASH GİRİŞ DOĞRULAMA ---
         function verifyAndLogin() {
             const hashVal = document.getElementById('accessHashInput').value.trim();
             const msg = document.getElementById('loginMsg');
@@ -512,7 +510,7 @@ MINI_APP_HTML = """
             }).then(res => res.json()).then(data => {
                 if(data.success) {
                     document.getElementById('hashLoginScreen').style.display = 'none';
-                    checkSecurityStatus(); // VPN ve Grup kontrolüne geç
+                    checkSecurityStatus();
                 } else {
                     msg.innerText = data.message;
                     msg.className = "error";
@@ -520,7 +518,6 @@ MINI_APP_HTML = """
             });
         }
 
-        // --- GÜVENLİK VE ERİŞİM KONTROLÜ (GRUP & VPN) ---
         function checkSecurityStatus() {
             fetch(`/api/security-check/${userId}`).then(res => res.json()).then(data => {
                 const wall = document.getElementById('securityWall');
@@ -897,7 +894,6 @@ th { background: #07090e; color: white; }
 def mini_app():
     return render_template_string(MINI_APP_HTML)
 
-# --- HASH DOĞRULAMA API ---
 @app.route('/api/verify-hash', methods=['POST'])
 def verify_hash():
     data = request.json
@@ -916,7 +912,6 @@ def verify_hash():
     
     return jsonify({"success": False, "message": "❌ Geçersiz erişim hash kodu! Bot üzerinden size verilen kodu kontrol edin."})
 
-# --- GÜVENLİK KONTROL API (IP / VPN & GRUP KONTROL) ---
 @app.route('/api/security-check/<int:user_id>')
 def security_check(user_id):
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
@@ -1156,7 +1151,6 @@ def leaderboard():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # Grup kontrolü /start anında da yapılır
     if not check_user_group_membership(user.id):
         await update.message.reply_text(
             f"⚠️ **Erişim Engellendi!**\n\nBotu ve platformu kullanabilmek için önce resmi topluluk grubumuza katılmalısınız.",
@@ -1165,7 +1159,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Kullanıcıya özel Erişim Hash Kodu üret
     conn = get_db()
     user_row = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
     
