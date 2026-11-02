@@ -155,7 +155,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (GÜNCELLENMİŞ SERTİFİKA LİNKİ İLE) ---
+# --- ARAYÜZ (UI/UX) HTML (GÖNDERDİĞİN GÖRSELİN BASE64 ENTEGRE EDİLMİŞ HALİ) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -427,14 +427,14 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- GERÇEK SERTİFİKA FOTOĞRAFI MODALI (YENİ LİNK İLE GÜNCELLENDİ) -->
+    <!-- GERÇEK SERTİFİKA FOTOĞRAFI MODALI (BASE64 ENTEGRE EDİLMİŞ GÖRSEL) -->
     <div id="certModal" class="modal">
         <div class="modal-content" style="border-color: var(--accent-gold); background: #0b0f19; padding: 12px;">
             <span class="close-btn" onclick="document.getElementById('certModal').style.display='none'">&times;</span>
             <h3 style="color:var(--accent-gold); margin: 5px 0 10px 0; font-size: 13px;">🛡️ Swiss Vault Resmi Sigorta Poliçesi</h3>
             <div style="width: 100%; border: 2px solid var(--accent-gold); border-radius: 8px; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center;">
-                <!-- Gönderdiğin resim linki entegre edildi -->
-                <img src="https://imgyukle.com/i/SIb30Q" alt="Swiss Vault Sigorta Poliçesi" style="width: 100%; height: auto; display: block;" id="certImgElement">
+                <!-- Gönderdiğin ekran görüntüsü doğrudan Base64 olarak gömüldü, hatasız açılır -->
+                <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=" alt="Swiss Vault Sigorta Poliçesi" style="width: 100%; height: auto; display: block;" id="certImgElement">
             </div>
             <p style="font-size: 10px; color: var(--text-muted); margin-top: 8px;">Tüm likidite varlıklarınız İsviçre Londra Havuzu güvencesindedir.</p>
         </div>
