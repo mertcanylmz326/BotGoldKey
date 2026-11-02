@@ -22,7 +22,7 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBeP
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com")
 TRC20_WALLET = "TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH"
 REQUIRED_GROUP_LINK = "https://t.me/+IxuuwXyL86AwNzc0"  # Gold Key Topluluğu Linki
-REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-1001234567890") # Telegram Grup ID (Örn: -100...)
+REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-1001234567890") # Telegram Grup ID
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "guvenli_ve_rastgele_uretilen_oturum_anahtari_9988")
@@ -45,7 +45,8 @@ def init_db():
             state TEXT DEFAULT 'normal',
             gas_paid INTEGER DEFAULT 0,
             ip_address TEXT,
-            is_vpn INTEGER DEFAULT 0
+            is_vpn INTEGER DEFAULT 0,
+            access_hash TEXT
         )
     ''')
     cursor.execute('''
@@ -106,7 +107,7 @@ def send_admin_notification(text):
     except Exception as e:
         logger.error(f"Admin bildirim hatası: {e}")
 
-# --- TELEGRAM GRUP ÜYELİK KONTROLÜ (API) ---
+# --- TELEGRAM GRUP ÜYELİK KONTROLÜ ---
 def check_user_group_membership(user_id):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={REQUIRED_GROUP_ID}&user_id={user_id}"
@@ -117,8 +118,7 @@ def check_user_group_membership(user_id):
                 return True
     except Exception as e:
         logger.error(f"Grup üyelik kontrol hatası: {e}")
-    # Eğer test ortamındaysanız veya grup ID henüz ayarlanmadıysa güvenlik amaçlı True dönebilir ya da False yapabilirsiniz.
-    return True # Gerçek ortamda grupta olmayanlar için False döner.
+    return True # Test ve entegrasyon kolaylığı için
 
 # --- ARKA PLAN VADE KONTROLÜ ---
 def background_workers():
@@ -155,7 +155,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (VPN & GRUP DOĞRULAMA KONTROLLÜ) ---
+# --- ARAYÜZ (UI/UX) HTML (HASH GİRİŞ EKRANI İLE) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -179,7 +179,11 @@ MINI_APP_HTML = """
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); padding: 10px; text-align: center; margin: 0; }
         
-        /* Güvenlik Engeli Ekranı (VPN veya Grupta Olmama Durumu) */
+        /* HASH GİRİŞ EKRANI MODALI (İLK AÇILIŞ) */
+        #hashLoginScreen { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #07090e; z-index: 99999; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+        .login-box { background: #101726; border: 1px solid var(--accent-gold); padding: 25px; border-radius: 16px; max-width: 320px; width: 100%; box-shadow: 0 0 35px rgba(245,158,11,0.3); text-align: center; }
+
+        /* GÜVENLİK DUVARI (VPN VEYA GRUP ENGELİ) */
         #securityWall { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #07090e; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
         .wall-card { background: #101726; border: 1px solid var(--accent-red); padding: 25px; border-radius: 16px; max-width: 320px; width: 100%; box-shadow: 0 0 30px rgba(239,68,68,0.3); text-align: center; }
 
@@ -250,12 +254,23 @@ MINI_APP_HTML = """
 </head>
 <body>
 
-    <!-- GÜVENLİK DUVARI (GRUP VEYA VPN ENGELİ) -->
+    <!-- HASH İLE GİRİŞ EKRANI (İLK AÇILIŞ) -->
+    <div id="hashLoginScreen">
+        <div class="login-box">
+            <h3 style="color:var(--accent-gold); margin-top:0;">🔑 Güvenli Hash Girişi</h3>
+            <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Lütfen Telegram botumuzdan aldığınız size özel **Erişim Hash** kodunu girin:</p>
+            <input type="text" id="accessHashInput" placeholder="Örn: GOLD-XXXXXX" style="text-align:center; font-family:monospace; font-weight:bold;">
+            <button class="primary-btn" onclick="verifyAndLogin()">Sisteme Giriş Yap</button>
+            <p id="loginMsg" style="font-size:11px; margin-top:8px;"></p>
+        </div>
+    </div>
+
+    <!-- GÜVENLİK DUVARI (VPN VEYA GRUP ENGELİ) -->
     <div id="securityWall">
         <div class="wall-card">
             <h3 style="color: var(--accent-red); margin-top:0;">🛡️ Güvenlik Doğrulaması</h3>
             <p id="wallReason" style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">
-                Sistemi kullanabilmek için resmi topluluk grubumuzda üye olmanız ve VPN/Proxy kullanmamanız gerekmektedir.
+                Sistemi kullanabilmek için resmi topluluk grubumuza üye olmanız ve VPN/Proxy kullanmamanız gerekmektedir.
             </p>
             <a href="https://t.me/+IxuuwXyL86AwNzc0" target="_blank" class="primary-btn" style="display:block; text-decoration:none; text-align:center; box-sizing:border-box; margin-bottom:8px;">📢 Gruba Katıl</a>
             <button class="primary-btn" style="background:var(--card-bg); border:1px solid var(--border-color);" onclick="checkSecurityStatus()">Tekrar Kontrol Et</button>
@@ -484,6 +499,27 @@ MINI_APP_HTML = """
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
+        // --- HASH GİRİŞ DOĞRULAMA ---
+        function verifyAndLogin() {
+            const hashVal = document.getElementById('accessHashInput').value.trim();
+            const msg = document.getElementById('loginMsg');
+            if(!hashVal) { msg.innerText = "Lütfen erişim hash kodunu girin."; msg.className = "error"; return; }
+
+            fetch('/api/verify-hash', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, hash: hashVal })
+            }).then(res => res.json()).then(data => {
+                if(data.success) {
+                    document.getElementById('hashLoginScreen').style.display = 'none';
+                    checkSecurityStatus(); // VPN ve Grup kontrolüne geç
+                } else {
+                    msg.innerText = data.message;
+                    msg.className = "error";
+                }
+            });
+        }
+
         // --- GÜVENLİK VE ERİŞİM KONTROLÜ (GRUP & VPN) ---
         function checkSecurityStatus() {
             fetch(`/api/security-check/${userId}`).then(res => res.json()).then(data => {
@@ -497,12 +533,10 @@ MINI_APP_HTML = """
                     loadData();
                 }
             }).catch(() => {
-                // Bağlantı hatası durumunda döngüde kalmasın
                 document.getElementById('securityWall').style.display = 'none';
                 loadData();
             });
         }
-        checkSecurityStatus();
 
         let totalSeconds = 10 * 60;
         const timerInterval = setInterval(() => {
@@ -863,19 +897,33 @@ th { background: #07090e; color: white; }
 def mini_app():
     return render_template_string(MINI_APP_HTML)
 
+# --- HASH DOĞRULAMA API ---
+@app.route('/api/verify-hash', methods=['POST'])
+def verify_hash():
+    data = request.json
+    user_id = int(data.get('user_id', 0))
+    user_hash = data.get('hash', '').strip()
+    
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+    conn.close()
+    
+    if not user:
+        return jsonify({"success": False, "message": "Kullanıcı kaydı bulunamadı! Önce botu /start ile başlatın."})
+    
+    if user["access_hash"] and user["access_hash"] == user_hash:
+        return jsonify({"success": True, "message": "Giriş başarılı!"})
+    
+    return jsonify({"success": False, "message": "❌ Geçersiz erişim hash kodu! Bot üzerinden size verilen kodu kontrol edin."})
+
 # --- GÜVENLİK KONTROL API (IP / VPN & GRUP KONTROL) ---
 @app.route('/api/security-check/<int:user_id>')
 def security_check(user_id):
-    # Kullanıcının IP adresini al
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if user_ip and ',' in user_ip:
         user_ip = user_ip.split(',')[0].strip()
 
-    # Basit VPN / Proxy / Hosting IP Tespiti (Örnek simülasyon veya header kontrolü)
-    # Cloudflare veya Render arkasındaki tünel/datacenter header taraması
     via_header = request.headers.get('Via', '').lower()
-    x_forwarded_host = request.headers.get('X-Forwarded-Host', '')
-    
     is_vpn = 0
     if "cloudflare" not in user_ip and (len(via_header) > 0 or "proxy" in via_header):
         is_vpn = 1
@@ -890,19 +938,16 @@ def security_check(user_id):
             "message": "⚠️ Sistemde kaydınız bulunamadı! Lütfen önce Telegram bot üzerinden /start komutunu göndererek kayıt olun."
         })
 
-    # Veritabanına IP kaydet
     conn.execute("UPDATE users SET ip_address = ?, is_vpn = ? WHERE user_id = ?", (user_ip, is_vpn, user_id))
     conn.commit()
     conn.close()
 
-    # VPN Kontrolü
     if is_vpn == 1:
         return jsonify({
             "passed": False, 
-            "message": "🛡️ Güvenlik Sistemi: VPN / Proxy tespit edildi! Lütfen güvenli bağlantı için VPN'inizi kapatıp tekrar deneyin."
+            "message": "🛡️ Güvenlik Sistemi: VPN / Proxy tespit edildi! Lütfen VPN'inizi kapatıp tekrar deneyin."
         })
 
-    # Telegram Grup Üyellik Kontrolü
     in_group = check_user_group_membership(user_id)
     if not in_group:
         return jsonify({
@@ -1107,21 +1152,31 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI & GAS FEE KONTROLÜ ---
+# --- TELEGRAM BOT KOMUTLARI & HASH OLUŞTURMA ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    keyboard = [
-        [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
-        [InlineKeyboardButton("🚀 Platformu Aç (Mini App)", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("💎 Bot Üzerinden Yatırım Yap", callback_data="bot_deposit")],
-        [InlineKeyboardButton("⛽ Gas Ücreti (Gas Fee) Yatır", callback_data="bot_gas")]
-    ]
-    
-    args = context.args
+    # Grup kontrolü /start anında da yapılır
+    if not check_user_group_membership(user.id):
+        await update.message.reply_text(
+            f"⚠️ **Erişim Engellendi!**\n\nBotu ve platformu kullanabilmek için önce resmi topluluk grubumuza katılmalısınız.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 Gruba Katıl", url=REQUIRED_GROUP_LINK)]]),
+            parse_mode="Markdown"
+        )
+        return
+
+    # Kullanıcıya özel Erişim Hash Kodu üret
     conn = get_db()
-    existing = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
-    if not existing:
+    user_row = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
+    
+    access_hash = ""
+    if user_row and user_row["access_hash"]:
+        access_hash = user_row["access_hash"]
+    else:
+        access_hash = "GOLD-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+    args = context.args
+    if not user_row:
         referrer_id = 0
         if args:
             ref_code = args[0]
@@ -1129,20 +1184,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if key and key["active"] and key["uses"] < key["max_uses"] and key["owner_id"] != user.id:
                 referrer_id = key["owner_id"]
                 conn.execute("UPDATE keys SET uses = uses + 1 WHERE key_string=?", (ref_code,))
-                
                 conn.execute("UPDATE users SET balance = balance + 50 WHERE user_id=?", (user.id,))
                 conn.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (referrer_id,))
-                
-                lvl1 = conn.execute("SELECT referrer_id FROM users WHERE user_id=?", (referrer_id,)).fetchone()
-                if lvl1 and lvl1["referrer_id"]:
-                    conn.execute("UPDATE users SET balance = balance + 50 WHERE user_id=?", (lvl1["referrer_id"],))
 
-        conn.execute("INSERT INTO users (user_id, balance, invested, locked_balance, vip_level, has_gold_key, referrer_id) VALUES (?, 100.0, 0.0, 100.0, 1, 0, ?)", (user.id, referrer_id))
+        conn.execute("INSERT INTO users (user_id, balance, invested, locked_balance, vip_level, has_gold_key, referrer_id, access_hash) VALUES (?, 100.0, 0.0, 100.0, 1, 0, ?, ?)", (user.id, referrer_id, access_hash))
+        conn.commit()
+    else:
+        conn.execute("UPDATE users SET access_hash = ? WHERE user_id = ?", (access_hash, user.id))
         conn.commit()
     conn.close()
 
+    keyboard = [
+        [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
+        [InlineKeyboardButton("🚀 Platformu Aç (Mini App)", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton("🔑 Giriş Hash Kodumu Al", callback_data="get_my_hash")],
+        [InlineKeyboardButton("💎 Bot Üzerinden Yatırım Yap", callback_data="bot_deposit")],
+        [InlineKeyboardButton("⛽ Gas Ücreti (Gas Fee) Yatır", callback_data="bot_gas")]
+    ]
+
     await update.message.reply_text(
-        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım ve casino botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı.",
+        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım ve casino botuna hoş geldiniz.\n\n🔑 **Sizin Erişim Hash Kodunuz:** `{access_hash}`\n*(Bu kodu platforma girerek giriş yapabilirsiniz)*",
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
     )
 
@@ -1150,7 +1211,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     
-    # Grup üyelik kontrolü (Buton etkileşimlerinde de zorunlu)
     if not check_user_group_membership(user_id):
         await query.answer("⚠️ Lütfen önce Gold Key topluluk grubuna katılın!", show_alert=True)
         return
@@ -1158,7 +1218,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     conn = get_db()
     
-    if query.data == "bot_deposit":
+    if query.data == "get_my_hash":
+        user = conn.execute("SELECT access_hash FROM users WHERE user_id=?", (user_id,)).fetchone()
+        conn.close()
+        h_code = user["access_hash"] if user else "BULUNAMADI"
+        await query.message.reply_text(f"🔑 **Sizin Güvenli Erişim Hash Kodunuz:**\n\n`{h_code}`\n\n*Mini App ekranında bu kodu yazarak oturum açabilirsiniz.*", parse_mode="Markdown")
+        
+    elif query.data == "bot_deposit":
         conn.execute("UPDATE users SET state = 'waiting_deposit_tx' WHERE user_id = ?", (user_id,))
         conn.commit()
         conn.close()
@@ -1195,6 +1261,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
             [InlineKeyboardButton("🚀 Platformu Aç (Mini App)", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [InlineKeyboardButton("🔑 Giriş Hash Kodumu Al", callback_data="get_my_hash")],
             [InlineKeyboardButton("💎 Bot Üzerinden Yatırım Yap", callback_data="bot_deposit")],
             [InlineKeyboardButton("⛽ Gas Ücreti (Gas Fee) Yatır", callback_data="bot_gas")]
         ]
