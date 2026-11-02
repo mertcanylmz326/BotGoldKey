@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gold Key Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #0f172a; color: #fff; text-align: center; padding: 20px; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        button { background: #10b981; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; width: 100%; }
+        button:hover { background: #059669; }
+    </style>
+</head>
+<body>
+    <h1>📈 GOLD KEY 💰</h1>
+    <p>Mini Uygulama Paneline Hoş Geldin!</p>
+    
+    <div class="card">
+        <h3>Token Durumu</h3>
+        <p>Token alarak kazanç zincirini başlatabilirsin.</p>
+        <button onclick="alert('Token oluşturma işlemi bot üzerinden yapılmaktadır!')">Token Yönetimi</button>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Tam ekran yap
+    </script>
+</body>
+</html>
