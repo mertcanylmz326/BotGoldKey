@@ -1,6 +1,7 @@
 import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import sqlite3
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 # Loglama
@@ -10,20 +11,65 @@ logging.basicConfig(
 )
 
 TOKEN = "9101317558:AAGt4hiYf7gVPrmCdtSPZ92zt4DyBpf4w0A"
+# Render üzerindeki web adresimiz (Mini App için)
+WEB_APP_URL = "https://botgoldkey.onrender.com"
 
-# Basit Veri Simülasyonu (Gerçek projede burası veritabanı olacak)
-# Token yapısı: { "TOKEN_KODU": { "sahip_id": 123, "kalan_hak": 10 } }
-AKTIF_TOKENLER = {}
-KULLANICI_BAKIYELERI = {}
+# --- VERİTABANI BAŞLANGICI ---
+def init_db():
+    conn = sqlite3.connect('goldkey.db')
+    cursor = conn.cursor()
+    # Kullanıcılar tablosu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            balance INTEGER DEFAULT 0
+        )
+    ''')
+    # Tokenler tablosu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tokens (
+            token_code TEXT PRIMARY KEY,
+            owner_id INTEGER,
+            uses_left INTEGER DEFAULT 10
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def get_balance(user_id):
+    conn = sqlite3.connect('goldkey.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return row[0]
+    else:
+        conn = sqlite3.connect('goldkey.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)', (user_id,))
+        conn.commit()
+        conn.close()
+        return 0
+
+def update_balance(user_id, amount):
+    conn = sqlite3.connect('goldkey.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)', (user_id,))
+    cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
+    conn.commit()
+    conn.close()
+# -----------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # Kullanıcının bakiyesi yoksa 0 yapalım
-    if user_id not in KULLANICI_BAKIYELERI:
-        KULLANICI_BAKIYELERI[user_id] = 0
+    get_balance(user_id) # Kullanıcıyı kaydet
 
+    # Mini App açmak için WebAppInfo kullanıyoruz
     keyboard = [
+        [InlineKeyboardButton("🌐 Gold Key Mini App'i Aç", web_app=WebAppInfo(url=WEB_APP_URL))],
         [InlineKeyboardButton("🔑 Token Al (500 TL)", callback_data="token_al")],
         [InlineKeyboardButton("🎟️ Token Gir / Kullan", callback_data="token_gir")],
         [InlineKeyboardButton("💰 Bakiyem", callback_data="bakiye")]
@@ -32,7 +78,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "📈 **GOLD KEY Satış ve Kazanç Sistemine Hoş Geldin!** 💰\n\n"
-        "Aşağıdaki menüden token alabilir, arkadaşının tokenini girerek kazanmaya başlayabilirsin.",
+        "İster Mini App üzerinden arayüzü kullan, ister aşağıdaki menüden işlemlerini yönet.",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
@@ -43,9 +89,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     if query.data == "token_al":
-        # Ödeme simülasyonu ve token üretimi
         yeni_token = f"GOLD-{user_id}-2026"
-        AKTIF_TOKENLER[yeni_token] = {"sahip_id": user_id, "kalan_hak": 10}
+        
+        conn = sqlite3.connect('goldkey.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT OR REPLACE INTO tokens (token_code, owner_id, uses_left) VALUES (?, ?, 10)', (yeni_token, user_id))
+        conn.commit()
+        conn.close()
         
         await query.message.reply_text(
             f"✅ **Ödeme Onaylandı! (Simülasyon)**\n\n"
@@ -63,7 +113,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "bakiye":
-        bakiye = KULLANICI_BAKIYELERI.get(user_id, 0)
+        bakiye = get_balance(user_id)
         await query.message.reply_text(f"💳 Güncel Bakiyen: **{bakiye} TL**", parse_mode="Markdown")
 
 async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,43 +126,49 @@ async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     girilen_token = args[0]
 
-    if girilen_token not in AKTIF_TOKENLER:
+    conn = sqlite3.connect('goldkey.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT owner_id, uses_left FROM tokens WHERE token_code = ?', (girilen_token,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
         await update.message.reply_text("❌ Bu token geçersiz veya daha önce tamamen tüketilmiş!")
         return
 
-    token_bilgi = AKTIF_TOKENLER[girilen_token]
-    
-    # Kendi tokenini girmesini engelle
-    if token_bilgi["sahip_id"] == user_id:
+    sahip_id, kalan_hak = row
+
+    if sahip_id == user_id:
+        conn.close()
         await update.message.reply_text("❌ Kendi tokenini kullanamazsın kanka!")
         return
 
-    if token_bilgi["kalan_hak"] <= 0:
+    if kalan_hak <= 0:
+        cursor.execute('DELETE FROM tokens WHERE token_code = ?', (girilen_token,))
+        conn.commit()
+        conn.close()
         await update.message.reply_text("❌ Bu tokenin 10 kişilik kullanım hakkı dolmuş ve silinmiştir!")
-        del AKTIF_TOKENLER[girilen_token]
         return
 
-    # Hak düşme ve kazanç ekleme
-    token_bilgi["kalan_hak"] -= 1
+    # Hak düş ve bakiyeleri güncelle
+    yeni_hak = kalan_hak - 1
+    if yeni_hak <= 0:
+        cursor.execute('DELETE FROM tokens WHERE token_code = ?', (girilen_token,))
+    else:
+        cursor.execute('UPDATE tokens SET uses_left = ? WHERE token_code = ?', (yeni_hak, girilen_token))
     
-    # Kullanıcıya 50 TL ekle
-    KULLANICI_BAKIYELERI[user_id] = KULLANICI_BAKIYELERI.get(user_id, 0) + 50
-    
-    # Token sahibine 100 TL ekle
-    sahip_id = token_bilgi["sahip_id"]
-    KULLANICI_BAKIYELERI[sahip_id] = KULLANICI_BAKIYELERI.get(sahip_id, 0) + 100
+    conn.commit()
+    conn.close()
 
-    kalan = token_bilgi["kalan_hak"]
-    
+    # Bakiyeleri ekle
+    update_balance(user_id, 50)
+    update_balance(sahip_id, 100)
+
     await update.message.reply_text(
         f"🎉 **Tebrikler!** Token başarıyla uygulandı.\n"
         f"Hesabına **50 TL** eklendi! 💸\n"
-        f"Bu tokenin kalan kullanım hakkı: {kalan}/10"
+        f"Bu tokenin kalan kullanım hakkı: {yeni_hak}/10"
     )
-    
-    # Hak bittiyse sil
-    if kalan <= 0:
-        del AKTIF_TOKENLER[girilen_token]
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -121,5 +177,5 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('kod', kod_kullan))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    print("Gold Key Bot çalışıyor...")
+    print("Gold Key Bot ve Veritabanı Aktif...")
     application.run_polling()
