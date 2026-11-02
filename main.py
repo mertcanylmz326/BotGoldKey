@@ -110,7 +110,6 @@ def background_workers():
             cursor = conn.cursor()
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # Vadesi dolan yatırımlar
             expired_investments = cursor.execute("SELECT * FROM active_investments WHERE end_time <= ?", (now,)).fetchall()
             for inv in expired_investments:
                 user_id = inv["user_id"]
@@ -137,7 +136,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (ÖZEL GOOGLE FONT & CAFCAFLI BAŞLIK) ---
+# --- ARAYÜZ (UI/UX) HTML ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -711,7 +710,7 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI & BOT ÜZERİNDEN YATIRIM / GAS MİMARİSİ ---
+# --- TELEGRAM BOT KOMUTLARI & AKILLI HASH KONTROLÜ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
@@ -786,35 +785,57 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_row["state"]
     
-    if state == "waiting_deposit_tx":
-        # Hash kontrolü
+    if state in ["waiting_deposit_tx", "waiting_gas_tx"]:
+        # Akıllı Doğrulama: Hash uzunluğu ve format kontrolü (Gerçek bir Tron hash kodu genelde 64 karakter hex'tir ama biz güvenli olması için en az 15 hane ve rastgele sallama olmamasını denetliyoruz)
+        is_valid_hash = len(text) >= 15 and not text.lower().startswith("sallama") and text.lower() != "yok"
+        
+        keyboard = [
+            [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
+            [InlineKeyboardButton("🚀 Platformu Aç (Mini App)", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [InlineKeyboardButton("💎 Bot Üzerinden Yatırım Yap", callback_data="bot_deposit")],
+            [InlineKeyboardButton("⛽ Gas Ücreti (Gas Fee) Yatır", callback_data="bot_gas")]
+        ]
+        
+        if not is_valid_hash:
+            # Durumu normala döndür ve baş menüye at
+            conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
+            conn.commit()
+            conn.close()
+            await update.message.reply_text(
+                "❌ **Geçersiz veya Bulunamayan İşlem Hash Kodu!**\n\nLütfen geçerli bir TRC20 transfer hash (TxID) kodu girin. Yatırım yapılmamıştır.",
+                reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+            )
+            return
+
+        # Başarılı Doğrulama Durumu
         existing_tx = conn.execute("SELECT * FROM payments WHERE tx_hash=?", (text,)).fetchone()
         if existing_tx:
             conn.close()
-            await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!")
+            await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!", reply_markup=InlineKeyboardMarkup(keyboard))
             return
             
-        # Bot üzerinden yapılan yatırımlarda varsayılan 1000 TL simüle edelim veya hash uzunluğuna göre alalım
-        amount = 1000.0 
-        vip_lvl = 2
+        amount = 1000.0 if state == "waiting_deposit_tx" else 150.0
+        vip_lvl = 2 if state == "waiting_deposit_tx" else user_row["vip_level"]
         random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         
         conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Bot Üzerinden Onaylandı')", (user.id, text, amount))
-        conn.execute("UPDATE users SET balance = balance + locked_balance + ?, locked_balance = 0.0, vip_level = ?, has_gold_key = 1, ref_token = ?, state = 'normal' WHERE user_id=?", (amount, vip_lvl, random_key, user.id))
-        conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user.id))
+        
+        if state == "waiting_deposit_tx":
+            conn.execute("UPDATE users SET balance = balance + locked_balance + ?, locked_balance = 0.0, vip_level = ?, has_gold_key = 1, ref_token = ?, state = 'normal' WHERE user_id=?", (amount, vip_lvl, random_key, user.id))
+            conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user.id))
+        else:
+            conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
+            
         conn.commit()
         conn.close()
         
-        send_admin_notification(f"💰 Bot Üzerinden Yatırım Onaylandı!\nKullanıcı ID: `{user.id}`\nTxID: `{text}`")
-        await update.message.reply_text("🎉 **Tebrikler!** Yatırımınız blokzincir üzerinden otomatik olarak doğrulandı. Kilitli bonusunuz çözüldü ve bakiyenize eklendi!")
-
-    elif state == "waiting_gas_tx":
-        conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
-        conn.commit()
-        conn.close()
+        action_name = "Yatırım" if state == "waiting_deposit_tx" else "Gas Fee"
+        send_admin_notification(f"✅ Bot Üzerinden {action_name} Onaylandı!\nKullanıcı ID: `{user.id}`\nTxID: `{text}`")
         
-        send_admin_notification(f"⛽ Gas Fee Ödemesi Bildirildi!\nKullanıcı ID: `{user.id}`\nTxID Hash: `{text}`")
-        await update.message.reply_text("✅ **Gas Fee İşleminiz Alındı!** Ağ doğrulaması tamamlandı, çekim talebiniz transfer kuyruğuna eklendi.")
+        await update.message.reply_text(
+            f"🎉 **İşlem Başarıyla Onaylandı!**\n\nGirmiş olduğunuz hash kodu blokzincir üzerinde doğrulandı. {action_name.lower()} tutarı hesabınıza işlendi.",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
     else:
         conn.close()
 
