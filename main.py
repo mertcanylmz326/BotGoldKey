@@ -64,7 +64,6 @@ MINI_APP_HTML = """
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        // Telegram ID alınamazsa test için rastgele bir ID atar
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
         function loadData() {
@@ -158,7 +157,7 @@ ADMIN_HTML = """
         <tr>
             <td>{{ uid }}</td>
             <td>{{ u.balance }} TL</td>
-            <td>{{ 'Var' * u.has_gold_key or 'Yok' }}</td>
+            <td>{{ 'Var' if u.has_gold_key else 'Yok' }}</td>
             <td>{{ u.ref_token or '-' }}</td>
         </tr>
         {% else %}
@@ -308,4 +307,4 @@ def main():
     application.run_polling()
 
 if __name__ == '__main__':
-    main>
+    main()
