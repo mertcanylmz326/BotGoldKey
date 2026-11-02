@@ -1,31 +1,36 @@
 import os
 import logging
 import sqlite3
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from flask import Flask, request, render_template
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
-# Loglama
+# Loglama ayarları
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
 TOKEN = "9101317558:AAGt4hiYf7gVPrmCdtSPZ92zt4DyBpf4w0A"
-# Render üzerindeki web adresimiz (Mini App için)
+PORT = int(os.environ.get("PORT", 8080))
 WEB_APP_URL = "https://botgoldkey.onrender.com"
 
-# --- VERİTABANI BAŞLANGICI ---
+app = Flask(__name__)
+bot = Bot(token=TOKEN)
+
+# Telegram Uygulamasını Yapılandır (Webhook için updater=None)
+telegram_app = Application.builder().token(TOKEN).updater(None).build()
+
+# --- VERİTABANI ---
 def init_db():
     conn = sqlite3.connect('goldkey.db')
     cursor = conn.cursor()
-    # Kullanıcılar tablosu
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             balance INTEGER DEFAULT 0
         )
     ''')
-    # Tokenler tablosu
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tokens (
             token_code TEXT PRIMARY KEY,
@@ -43,12 +48,10 @@ def get_balance(user_id):
     cursor = conn.cursor()
     cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
-    conn.close()
     if row:
+        conn.close()
         return row[0]
     else:
-        conn = sqlite3.connect('goldkey.db')
-        cursor = conn.cursor()
         cursor.execute('INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)', (user_id,))
         conn.commit()
         conn.close()
@@ -61,13 +64,12 @@ def update_balance(user_id, amount):
     cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
     conn.commit()
     conn.close()
-# -----------------------------
+# ------------------
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context):
     user_id = update.effective_user.id
-    get_balance(user_id) # Kullanıcıyı kaydet
+    get_balance(user_id)
 
-    # Mini App açmak için WebAppInfo kullanıyoruz
     keyboard = [
         [InlineKeyboardButton("🌐 Gold Key Mini App'i Aç", web_app=WebAppInfo(url=WEB_APP_URL))],
         [InlineKeyboardButton("🔑 Token Al (500 TL)", callback_data="token_al")],
@@ -78,12 +80,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "📈 **GOLD KEY Satış ve Kazanç Sistemine Hoş Geldin!** 💰\n\n"
-        "İster Mini App üzerinden arayüzü kullan, ister aşağıdaki menüden işlemlerini yönet.",
+        "Aşağıdaki menüden işlemlerini yönetebilir veya Mini App'i açabilirsin.",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -116,7 +118,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bakiye = get_balance(user_id)
         await query.message.reply_text(f"💳 Güncel Bakiyen: **{bakiye} TL**", parse_mode="Markdown")
 
-async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def kod_kullan(update: Update, context):
     user_id = update.effective_user.id
     args = context.args
     
@@ -150,7 +152,6 @@ async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Bu tokenin 10 kişilik kullanım hakkı dolmuş ve silinmiştir!")
         return
 
-    # Hak düş ve bakiyeleri güncelle
     yeni_hak = kalan_hak - 1
     if yeni_hak <= 0:
         cursor.execute('DELETE FROM tokens WHERE token_code = ?', (girilen_token,))
@@ -160,7 +161,6 @@ async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
 
-    # Bakiyeleri ekle
     update_balance(user_id, 50)
     update_balance(sahip_id, 100)
 
@@ -170,12 +170,31 @@ async def kod_kullan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Bu tokenin kalan kullanım hakkı: {yeni_hak}/10"
     )
 
-if __name__ == '__main__':
-    application = ApplicationBuilder().token(TOKEN).build()
+# Komutları uygulamaya ekle
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("kod", kod_kullan))
+telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('kod', kod_kullan))
-    application.add_handler(CallbackQueryHandler(button_handler))
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    """Telegram'dan gelen güncellemeleri Flask ile karşılar"""
+    import asyncio
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, bot)
+        
+        async def main():
+            await telegram_app.initialize()
+            await telegram_app.process_update(update)
 
-    print("Gold Key Bot ve Veritabanı Aktif...")
-    application.run_polling()
+        asyncio.run(main())
+    except Exception as e:
+        logger.error(f"Hata oluştu: {e}")
+    return "ok", 200
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html") if os.path.exists("index.html") else "Bot çalışıyor ve Webhook aktif!", 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=PORT)
