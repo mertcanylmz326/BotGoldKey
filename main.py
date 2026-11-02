@@ -138,14 +138,14 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (CASINO SEKMESİ VE 10 RİSK OYUNU) ---
+# --- ARAYÜZ (UI/UX) HTML (GERÇEK OYNANABİLİR İNTERAKTİF CASINO OYUNLARI) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Key Topluluğu - Casino & Yield Fund</title>
+    <title>Gold Key Topluluğu - İnteraktif Casino & Yield Fund</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -199,7 +199,18 @@ MINI_APP_HTML = """
         .game-card { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; text-align: center; }
         .game-card h4 { margin: 0 0 5px 0; font-size: 12px; color: var(--accent-gold); }
         .game-card p { margin: 0 0 8px 0; font-size: 10px; color: var(--text-muted); }
-        .game-btn { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; padding: 6px; border-radius: 6px; font-size: 11px; font-weight: 600; width: 100%; cursor: pointer; }
+        .game-btn { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; padding: 7px; border-radius: 6px; font-size: 11px; font-weight: 600; width: 100%; cursor: pointer; }
+
+        /* Modal / Oyun Açılır Pencere Stili */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
+        .modal-content { background: #131b2e; border: 1px solid var(--accent-gold); padding: 20px; border-radius: 14px; width: 85%; max-width: 320px; text-align: center; box-shadow: 0 0 25px rgba(245,158,11,0.3); position: relative; }
+        .close-btn { position: absolute; right: 12px; top: 8px; font-size: 20px; color: var(--text-muted); cursor: pointer; }
+        
+        /* Çark Animasyon Alanı */
+        .wheel-box { width: 100px; height: 100px; border: 4px solid var(--accent-gold); border-radius: 50%; margin: 15px auto; display: flex; align-items: center; justify-content: center; font-size: 24px; transition: transform 3s cubic-bezier(0.15, 0.95, 0.15, 1); background: #07090e; }
+        
+        /* Crash Roket Alanı */
+        .crash-screen { background: #07090e; border: 1px dashed var(--border-color); border-radius: 8px; padding: 15px; margin: 10px 0; font-size: 22px; font-weight: 700; color: var(--accent-green); }
 
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 8px; line-height: 1.4; text-align: left; }
         .wallet-box { background: #07090e; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
@@ -221,7 +232,7 @@ MINI_APP_HTML = """
         <div class="badge" id="vipBadge">VIP 1 (Silver)</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Gold Key Casino: Risk masaları açıldı, şansını dene bakiyeni katla veya bat!</div>
+    <div class="ticker" id="tickerText">🔔 Gold Key Casino: Canlı masalar açıldı, gerçek zamanlı oyun motoru aktif!</div>
 
     <div class="chart-container" id="liveChart">
         <div class="chart-bar" style="height: 30%;"></div>
@@ -292,19 +303,19 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- YENİ 10 OYUNLUK CASINO SEKMESİ -->
+    <!-- CASINO SEKME (GERÇEK OYNANABİLİR OYUNLAR & AIRDROP) -->
     <div id="casino" class="section">
         <div class="card">
-            <h3>🎲 Gold Key Casino & Risk Salonu</h3>
-            <p style="font-size: 11px; color: var(--text-muted);">Airdrop dahil 10 farklı risk oyununda şansınızı deneyin, bakiyenizi katlayın veya kasaya bırakın!</p>
+            <h3>🎰 Gold Key Casino & Risk Salonu</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Aşağıdaki oyunlara tıklayarak doğrudan tarayıcıda oynayabilir, şansınızı deneyebilirsiniz!</p>
             <p id="casinoMsg" style="font-weight: 600; text-align: center; margin: 5px 0;"></p>
             
             <div class="game-grid">
-                <!-- 1. Çark -->
+                <!-- 1. Çark (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🎡 Şans Çarkı</h4>
-                    <p>50 ₺ Yatır, 3x Kazan</p>
-                    <button class="game-btn" onclick="playGame('wheel', 50)">Çevir (50 ₺)</button>
+                    <p>Çevir, 3x Kazan</p>
+                    <button class="game-btn" onclick="openGameModal('wheel')">Oyna</button>
                 </div>
                 <!-- 2. AirDrop -->
                 <div class="game-card">
@@ -312,55 +323,63 @@ MINI_APP_HTML = """
                     <p>24 Saatte 10 ₺ Topla</p>
                     <button class="game-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="playGame('airdrop', 0)">Topla (10 ₺)</button>
                 </div>
-                <!-- 3. Slot Makinesi -->
-                <div class="game-card">
-                    <h4>🎰 777 Slot</h4>
-                    <p>100 ₺ At, Jackpot Patlat</p>
-                    <button class="game-btn" onclick="playGame('slot', 100)">Oyna (100 ₺)</button>
-                </div>
-                <!-- 4. Crash Oyunu -->
+                <!-- 3. Roket Crash (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🚀 Roket Crash</h4>
-                    <p>200 ₺ Yatır, Patlamadan Çek</p>
-                    <button class="game-btn" onclick="playGame('crash', 200)">Uçur (200 ₺)</button>
+                    <p>Çarpanı Yakala</p>
+                    <button class="game-btn" onclick="openGameModal('crash')">Oyna</button>
                 </div>
-                <!-- 5. Rulet -->
+                <!-- 4. Rulet (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🔴 Kırmızı / Siyah</h4>
-                    <p>150 ₺ Bas, Rengi Seç</p>
-                    <button class="game-btn" onclick="playGame('roulette', 150)">Oyna (150 ₺)</button>
+                    <p>Rengini Seç</p>
+                    <button class="game-btn" onclick="openGameModal('roulette')">Oyna</button>
                 </div>
-                <!-- 6. Zar Atma -->
+                <!-- 5. Yazı Tura (Oynanabilir) -->
+                <div class="game-card">
+                    <h4>🪙 Kripto Flip</h4>
+                    <p>Yazı mı Tura mı?</p>
+                    <button class="game-btn" onclick="openGameModal('coinflip')">Oyna</button>
+                </div>
+                <!-- 6. Slot -->
+                <div class="game-card">
+                    <h4>🎰 777 Slot</h4>
+                    <p>Jackpot Patlat</p>
+                    <button class="game-btn" onclick="playQuickGame('slot', 100)">Oyna (100 ₺)</button>
+                </div>
+                <!-- 7. Zar -->
                 <div class="game-card">
                     <h4>🎲 Yüksek Zar</h4>
-                    <p>75 ₺ Bas, 6 At Kazan</p>
-                    <button class="game-btn" onclick="playGame('dice', 75)">Zar At (75 ₺)</button>
+                    <p>6 At, 3x Al</p>
+                    <button class="game-btn" onclick="playQuickGame('dice', 75)">Oyna (75 ₺)</button>
                 </div>
-                <!-- 7. Maden Kazı (Mines) -->
+                <!-- 8. Mayın Tarlası -->
                 <div class="game-card">
                     <h4>💣 Mayın Tarlası</h4>
-                    <p>120 ₺ Bas, Mayına Basma</p>
-                    <button class="game-btn" onclick="playGame('mines', 120)">Kazı (120 ₺)</button>
+                    <p>Mayına Basma</p>
+                    <button class="game-btn" onclick="playQuickGame('mines', 120)">Oyna (120 ₺)</button>
                 </div>
-                <!-- 8. Blackjack Çatışması -->
+                <!-- 9. Blackjack -->
                 <div class="game-card">
                     <h4>🃏 Mini Blackjack</h4>
-                    <p>250 ₺ Bas, 21'e Ulaş</p>
-                    <button class="game-btn" onclick="playGame('blackjack', 250)">Dağıt (250 ₺)</button>
-                </div>
-                <!-- 9. Kripto Flip -->
-                <div class="game-card">
-                    <h4>🪙 Yazı Tura Kripto</h4>
-                    <p>100 ₺ Bas, İkiye Katla</p>
-                    <button class="game-btn" onclick="playGame('coinflip', 100)">At (100 ₺)</button>
+                    <p>21'e Ulaş</p>
+                    <button class="game-btn" onclick="playQuickGame('blackjack', 250)">Oyna (250 ₺)</button>
                 </div>
                 <!-- 10. Mega Jackpot -->
                 <div class="game-card">
                     <h4>👑 Mega Jackpot</h4>
-                    <p>500 ₺ Bas, 10x Vur</p>
-                    <button class="game-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="playGame('jackpot', 500)">Şansını Dene</button>
+                    <p>10x Şansını Dene</p>
+                    <button class="game-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="playQuickGame('jackpot', 500)">Oyna (500 ₺)</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- OYUN MODALLARI (AÇILIR PENCERELER) -->
+    <div id="gameModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeGameModal()">&times;</span>
+            <div id="modalBody"></div>
         </div>
     </div>
 
@@ -482,7 +501,137 @@ MINI_APP_HTML = """
             });
         }
 
-        function playGame(gameType, cost) {
+        // --- İNTERAKTİF OYUN MODAL MİMARİSİ ---
+        function openGameModal(gameType) {
+            const modal = document.getElementById('gameModal');
+            const body = document.getElementById('modalBody');
+            modal.style.display = 'flex';
+
+            if(gameType === 'wheel') {
+                body.innerHTML = `
+                    <h3 style="color:var(--accent-gold); margin-top:0;">Şans Çarkı (50 ₺)</h3>
+                    <div class="wheel-box" id="wheelCircle">🔑</div>
+                    <button class="primary-btn" onclick="spinWheelInteractive()">Çarkı Çevir</button>
+                    <p id="modalResult" style="font-size:12px; margin-top:10px;"></p>
+                `;
+            } else if(gameType === 'crash') {
+                body.innerHTML = `
+                    <h3 style="color:var(--accent-gold); margin-top:0;">Roket Crash (200 ₺)</h3>
+                    <div class="crash-screen" id="crashScreen">1.00x</div>
+                    <button class="primary-btn" id="crashBtn" onclick="startCrashGame()">Başlat & Uçur</button>
+                    <p id="modalResult" style="font-size:12px; margin-top:10px;"></p>
+                `;
+            } else if(gameType === 'roulette') {
+                body.innerHTML = `
+                    <h3 style="color:var(--accent-gold); margin-top:0;">Kırmızı / Siyah (150 ₺)</h3>
+                    <p style="font-size:11px; color:var(--text-muted);">Bahis Tutar: 150 ₺</p>
+                    <button class="primary-btn" style="background:var(--accent-red);" onclick="playRouletteInteractive('red')">Kırmızıya Bas</button>
+                    <button class="primary-btn" style="background:#1e293b;" onclick="playRouletteInteractive('black')">Siyaha Bas</button>
+                    <p id="modalResult" style="font-size:12px; margin-top:10px;"></p>
+                `;
+            } else if(gameType === 'coinflip') {
+                body.innerHTML = `
+                    <h3 style="color:var(--accent-gold); margin-top:0;">Kripto Flip (100 ₺)</h3>
+                    <button class="primary-btn" onclick="playCoinFlip('yazi')">Yazı Seç</button>
+                    <button class="primary-btn" style="background:#d97706;" onclick="playCoinFlip('tura')">Tura Seç</button>
+                    <p id="modalResult" style="font-size:12px; margin-top:10px;"></p>
+                `;
+            }
+        }
+
+        function closeGameModal() {
+            document.getElementById('gameModal').style.display = 'none';
+        }
+
+        function spinWheelInteractive() {
+            const wheel = document.getElementById('wheelCircle');
+            const res = document.getElementById('modalResult');
+            wheel.style.transform = `rotate(${Math.floor(Math.random() * 1000) + 1440}deg)`;
+            
+            setTimeout(() => {
+                fetch('/api/play-casino', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, game: 'wheel', cost: 50 })
+                }).then(res => res.json()).then(data => {
+                    res.innerText = data.message;
+                    res.className = data.success ? "success" : "error";
+                    loadData();
+                });
+            }, 3000);
+        }
+
+        let crashInterval;
+        function startCrashGame() {
+            const screen = document.getElementById('crashScreen');
+            const btn = document.getElementById('crashBtn');
+            const res = document.getElementById('modalResult');
+            let multiplier = 1.00;
+            let crashPoint = (Math.random() * 3 + 1.1).toFixed(2);
+            
+            btn.innerText = "Parayı Çek!";
+            btn.onclick = function() {
+                clearInterval(crashInterval);
+                // Kazandı
+                fetch('/api/play-casino', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, game: 'crash_win', cost: 200, mult: multiplier })
+                }).then(res => res.json()).then(data => {
+                    res.innerText = `🎉 Başarıyla Çektin! Çarpan: ${multiplier}x`;
+                    res.className = "success";
+                    btn.innerText = "Başlat & Uçur";
+                    btn.onclick = startCrashGame;
+                    loadData();
+                });
+            };
+
+            crashInterval = setInterval(() => {
+                multiplier += 0.05;
+                screen.innerText = multiplier.toFixed(2) + "x";
+                if(multiplier >= crashPoint) {
+                    clearInterval(crashInterval);
+                    screen.innerText = "💥 PATLADI! (" + crashPoint + "x)";
+                    fetch('/api/play-casino', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, game: 'crash_lose', cost: 200 })
+                    }).then(() => {
+                        btn.innerText = "Başlat & Uçur";
+                        btn.onclick = startCrashGame;
+                        loadData();
+                    });
+                }
+            }, 150);
+        }
+
+        function playRouletteInteractive(choice) {
+            fetch('/api/play-casino', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, game: 'roulette', cost: 150, choice: choice })
+            }).then(res => res.json()).then(data => {
+                const resEl = document.getElementById('modalResult');
+                resEl.innerText = data.message;
+                resEl.className = data.success ? "success" : "error";
+                loadData();
+            });
+        }
+
+        function playCoinFlip(choice) {
+            fetch('/api/play-casino', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, game: 'coinflip', cost: 100, choice: choice })
+            }).then(res => res.json()).then(data => {
+                const resEl = document.getElementById('modalResult');
+                resEl.innerText = data.message;
+                resEl.className = data.success ? "success" : "error";
+                loadData();
+            });
+        }
+
+        function playQuickGame(gameType, cost) {
             fetch('/api/play-casino', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -491,7 +640,20 @@ MINI_APP_HTML = """
                 const msg = document.getElementById('casinoMsg');
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
-                if(data.success || data.balance_updated) loadData();
+                loadData();
+            });
+        }
+
+        function playAirDrop() {
+            fetch('/api/play-casino', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, game: 'airdrop', cost: 0 })
+            }).then(res => res.json()).then(data => {
+                const msg = document.getElementById('casinoMsg');
+                msg.innerText = data.message;
+                msg.className = data.success ? "success" : "error";
+                loadData();
             });
         }
 
@@ -655,7 +817,7 @@ def get_history(user_id):
         "withdraws": [dict(row) for row in withdraws]
     })
 
-# --- CASINO OYUNLARI API (10 Farklı Oyun, Kasa Kazanır Mantığı) ---
+# --- İNTERAKTİF CASINO OYUNLARI ARKA PLAN API ---
 @app.route('/api/play-casino', methods=['POST'])
 def play_casino():
     data = request.json
@@ -667,7 +829,6 @@ def play_casino():
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
     
     if game == 'airdrop':
-        # Airdrop özel kontrolü (24 saatte 1)
         now = datetime.datetime.now()
         if user and user["last_bonus"]:
             last_bonus_time = datetime.datetime.strptime(user["last_bonus"], '%Y-%m-%d %H:%M:%S')
@@ -684,17 +845,27 @@ def play_casino():
         conn.execute("UPDATE users SET balance = balance + 10, last_bonus = ? WHERE user_id=?", (now.strftime('%Y-%m-%d %H:%M:%S'), user_id))
         conn.commit()
         conn.close()
-        return jsonify({"success": True, "message": "🎉 Günlük 10 ₺ AirDrop ödülü hesabınıza eklendi!", "balance_updated": True})
+        return jsonify({"success": True, "message": "🎉 Günlük 10 ₺ AirDrop ödülü hesabınıza eklendi!"})
 
-    # Diğer kumar oyunları için bakiye kontrolü
+    if game == 'crash_win':
+        mult = float(data.get('mult', 1.0))
+        reward = cost * mult
+        conn.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": f"🎉 Crash kazancı: +{reward:.2f} ₺"})
+
+    if game == 'crash_lose':
+        conn.close()
+        return jsonify({"success": False, "message": "💥 Roket patladı, kaybettin!"})
+
     if not user or user["balance"] < cost:
         conn.close()
         return jsonify({"success": False, "message": f"⚠️ Bu oyun için yetersiz bakiye ({cost} ₺ gerekli)!"})
 
-    # Oyundan düş
     conn.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (cost, user_id))
     
-    # %85 ihtimalle kaybetme, %15 ihtimalle kazanma (Kasa her zaman kazanır)
+    # Kasa ağırlıklı (%85 kayıp, %15 kazanç)
     win = random.choices([False, True], weights=[85, 15], k=1)[0]
     
     if win:
@@ -702,11 +873,11 @@ def play_casino():
         conn.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
         conn.commit()
         conn.close()
-        return jsonify({"success": True, "message": f"🎰 TEBRİKLER! {game.upper} oyununu kazandın! +{reward:.2f} ₺ eklendi.", "balance_updated": True})
+        return jsonify({"success": True, "message": f"🎰 TEBRİKLER! Kazandın! +{reward:.2f} ₺ eklendi."})
     else:
         conn.commit()
         conn.close()
-        return jsonify({"success": False, "message": f"😢 {game.upper} masasında kaybettin! -{cost} ₺ kasa tarafından alındı.", "balance_updated": True})
+        return jsonify({"success": False, "message": f"😢 Kaybettin! -{cost} ₺ kasa tarafından alındı."})
 
 @app.route('/api/verify-deposit', methods=['POST'])
 def verify_deposit():
@@ -894,7 +1065,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         existing_tx = conn.execute("SELECT * FROM payments WHERE tx_hash=?", (text,)).fetchone()
         if existing_tx:
             conn.close()
-            await update.message.reply_text("❌ This TxID Hash has already been used!", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!", reply_markup=InlineKeyboardMarkup(keyboard))
             return
             
         if state == "waiting_deposit_tx":
