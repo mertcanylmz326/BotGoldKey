@@ -2,11 +2,9 @@ import os
 import logging
 import random
 import string
-import threading
-import asyncio
 from flask import Flask, render_template_string, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 # Logging ayarları
 logging.basicConfig(
@@ -16,14 +14,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBePegs1C1Cs")
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com") # Render linkin
 
 # Veri tabanı simülasyonu
 users_db = {}  
 keys_db = {}   
 
 app = Flask(__name__)
-WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com") # Kendi render linkin
 
+# --- HTML ŞABLONLARI ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -44,13 +43,11 @@ MINI_APP_HTML = """
 </head>
 <body>
     <h2>🌟 Gold Key & Cüzdan Paneli</h2>
-    
     <div class="card">
         <h3>Cüzdan Durumu</h3>
         <p>Bakiye: <span id="balance" style="font-size: 22px; font-weight: bold; color: #facc15;">0.00 TL</span></p>
         <p>Referans Kodunuz: <br><strong id="refToken" style="color: #38bdf8; font-size: 18px;">Yükleniyor...</strong></p>
     </div>
-
     <div class="card">
         <h3>Gold Key / Referans Kodu Gir</h3>
         <p style="font-size: 13px; color: #94a3b8;">Arkadaşının kodunu girerek anında 50 TL kazan!</p>
@@ -59,46 +56,30 @@ MINI_APP_HTML = """
         <button onclick="useKey()">Kodu Kullan & 50 TL Kazan</button>
         <p id="resultMsg"></p>
     </div>
-
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
-
         function loadData() {
-            fetch(`/api/user/${userId}`)
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById('balance').innerText = data.balance.toFixed(2) + " TL";
-                    document.getElementById('refToken').innerText = data.ref_token || "Henüz Gold Key Alınmadı";
-                });
+            fetch(`/api/user/${userId}`).then(res => res.json()).then(data => {
+                document.getElementById('balance').innerText = data.balance.toFixed(2) + " TL";
+                document.getElementById('refToken').innerText = data.ref_token || "Henüz Gold Key Alınmadı";
+            });
         }
-
         function useKey() {
             const key = document.getElementById('keyInput').value.trim();
             const msg = document.getElementById('resultMsg');
-            if(!key) {
-                msg.innerText = "Lütfen bir kod girin!";
-                msg.className = "error";
-                return;
-            }
-
+            if(!key) { msg.innerText = "Lütfen bir kod girin!"; msg.className = "error"; return; }
             fetch('/api/use-key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, key: key })
-            })
-            .then(res => res.json())
-            .then(data => {
+            }).then(res => res.json()).then(data => {
                 msg.innerText = data.message;
                 msg.className = data.success ? "success" : "error";
-                if(data.success) {
-                    loadData();
-                    document.getElementById('keyInput').value = "";
-                }
+                if(data.success) { loadData(); document.getElementById('keyInput').value = ""; }
             });
         }
-
         loadData();
     </script>
 </body>
@@ -143,6 +124,61 @@ ADMIN_HTML = """
 </html>
 """
 
+# --- BOT FONKSİYONLARI ---
+async def start(update: Update, context):
+    user = update.effective_user
+    if user.id not in users_db:
+        users_db[user.id] = {"balance": 0.0, "has_gold_key": False, "ref_token": None}
+
+    keyboard = [
+        [InlineKeyboardButton("🚀 Mini App Aç (Cüzdan & Kod İşlemleri)", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton("👑 Gold Key Satın Al (500 TL)", callback_data="buy_gold_key")],
+        [InlineKeyboardButton("📊 Bilgilerim", callback_data="my_info")]
+    ]
+    await update.message.reply_text(
+        f"Selam {user.first_name}!\n"
+        "Gold Key & Referans Kazanım Sistemine Hoş Geldin. 💰\n\n"
+        "• 500 TL ödeyerek Gold Key alabilir, kendi referans kodunu üretebilirsin.\n"
+        "• Kodun 10 defa kullanılabilir. Her kullanımda sen **100 TL**, kodu kullanan arkadaşın **50 TL** kazanır!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def button_handler(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id not in users_db:
+        users_db[user_id] = {"balance": 0.0, "has_gold_key": False, "ref_token": None}
+
+    if query.data == "buy_gold_key":
+        keyboard = [[InlineKeyboardButton("💳 Ödemeyi Yaptım / Onayla", callback_data="confirm_payment")]]
+        await query.message.reply_text(
+            "Gold Key satın almak için aşağıdaki IBAN adresine **500 TL** gönderin ve ardından onay butonuna basın.\n\n"
+            "🏦 IBAN: `TR33 0006 2000 1110 0000 0000 01`",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
+    elif query.data == "confirm_payment":
+        random_key = "GOLD-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        users_db[user_id]["has_gold_key"] = True
+        users_db[user_id]["ref_token"] = random_key
+        keys_db[random_key] = {"owner_id": user_id, "uses": 0, "max_uses": 10, "active": True}
+        await query.message.reply_text(
+            f"✅ Ödemeniz onaylandı! Gold Key'iniz oluşturuldu.\n\n🔑 **Referans Kodunuz:** `{random_key}`", parse_mode="Markdown"
+        )
+    elif query.data == "my_info":
+        u = users_db[user_id]
+        token = u["ref_token"] if u["ref_token"] else "Yok"
+        uses_left = 10 - keys_db[token]["uses"] if token in keys_db else 0
+        await query.message.reply_text(
+            f"📊 **Hesap Bilgileriniz:**\n\n💰 Bakiye: **{u['balance']:.2f} TL**\n🔑 Kodunuz: `{token}`\n📉 Kalan Hak: {uses_left}/10", parse_mode="Markdown"
+        )
+
+# Telegram Bot Uygulamasını Hazırla
+telegram_app = Application.builder().token(TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CallbackQueryHandler(button_handler))
+
+# --- FLASK ROTALARI ---
 @app.route('/')
 def mini_app():
     return render_template_string(MINI_APP_HTML)
@@ -153,130 +189,51 @@ def admin_panel():
 
 @app.route('/api/user/<int:user_id>')
 def get_user_data(user_id):
-    user = users_db.get(user_id, {"balance": 0.0, "has_gold_key": False, "ref_token": None})
-    return jsonify(user)
+    return jsonify(users_db.get(user_id, {"balance": 0.0, "has_gold_key": False, "ref_token": None}))
 
 @app.route('/api/use-key', methods=['POST'])
 def use_referral_key():
     data = request.json
     user_id = int(data.get('user_id', 0))
     entered_key = data.get('key', '').strip()
-    
     if user_id not in users_db:
         users_db[user_id] = {"balance": 0.0, "has_gold_key": False, "ref_token": None}
-        
     if entered_key not in keys_db:
         return jsonify({"success": False, "message": "Geçersiz Gold Key / Referans Kodu!"})
-        
     key_info = keys_db[entered_key]
     if not key_info["active"] or key_info["uses"] >= key_info["max_uses"]:
-        return jsonify({"success": False, "message": "Bu kodun 10 kullanım hakkı dolmuş veya pasif!"})
-        
+        return jsonify({"success": False, "message": "Bu kodun kullanım hakkı dolmuş!"})
     if key_info["owner_id"] == user_id:
-        return jsonify({"success": False, "message": "Kendi referans kodunu kullanamazsın!"})
+        return jsonify({"success": False, "message": "Kendi kodunu kullanamazsın!"})
 
     key_info["uses"] += 1
-    if key_info["uses"] >= 10:
-        key_info["active"] = False
-        
+    if key_info["uses"] >= 10: key_info["active"] = False
     users_db[user_id]["balance"] += 50.0
     owner_id = key_info["owner_id"]
-    if owner_id in users_db:
-        users_db[owner_id]["balance"] += 100.0
+    if owner_id in users_db: users_db[owner_id]["balance"] += 100.0
+    return jsonify({"success": True, "message": "Tebrikler! 50 TL kazandın! 🎉"})
 
-    return jsonify({"success": True, "message": "Tebrikler! Kod başarıyla uygulandı, 50 TL kazandın! 🎉"})
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user.id not in users_db:
-        users_db[user.id] = {"balance": 0.0, "has_gold_key": False, "ref_token": None}
-
-    keyboard = [
-        [InlineKeyboardButton("🚀 Mini App Aç (Cüzdan & Kod İşlemleri)", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("👑 Gold Key Satın Al (500 TL)", callback_data="buy_gold_key")],
-        [InlineKeyboardButton("📊 Bilgilerim", callback_data="my_info")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+# Telegram'dan gelen Webhook isteklerini yakalayan kritik rota
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    import asyncio
+    async def process():
+        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+        await telegram_app.initialize()
+        await telegram_app.process_update(update)
     
-    await update.message.reply_text(
-        f"Selam {user.first_name}!\n"
-        "Gold Key & Referans Kazanım Sistemine Hoş Geldin. 💰\n\n"
-        "• 500 TL ödeyerek Gold Key alabilir, kendi referans kodunu üretebilirsin.\n"
-        "• Kodun 10 defa kullanılabilir. Her kullanımda sen **100 TL**, kodu kullanan arkadaşın **50 TL** kazanır!\n"
-        "• 10 hak dolunca kod iptal olur, yenisini almak gerekir.",
-        reply_markup=reply_markup
-    )
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    if user_id not in users_db:
-        users_db[user_id] = {"balance": 0.0, "has_gold_key": False, "ref_token": None}
-
-    if query.data == "buy_gold_key":
-        keyboard = [[InlineKeyboardButton("💳 Ödemeyi Yaptım / Onayla", callback_data="confirm_payment")]]
-        await query.message.reply_text(
-            "Gold Key satın almak için aşağıdaki IBAN adresine **500 TL** gönderin ve ardından onay butonuna basın.\n\n"
-            "🏦 IBAN: `TR33 0006 2000 1110 0000 0000 01`",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
-
-    elif query.data == "confirm_payment":
-        random_key = "GOLD-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        users_db[user_id]["has_gold_key"] = True
-        users_db[user_id]["ref_token"] = random_key
-        
-        keys_db[random_key] = {
-            "owner_id": user_id,
-            "uses": 0,
-            "max_uses": 10,
-            "active": True
-        }
-        
-        await query.message.reply_text(
-            f"✅ Ödemeniz onaylandı! Gold Key'iniz oluşturuldu.\n\n"
-            f"🔑 **Referans Kodunuz:** `{random_key}`\n"
-            f"👥 Kalan Hak: 10/10\n"
-            f"Bu kodu arkadaşlarınızla paylaşarak kazanmaya başlayabilirsiniz!",
-            parse_mode="Markdown"
-        )
-
-    elif query.data == "my_info":
-        u = users_db[user_id]
-        token = u["ref_token"] if u["ref_token"] else "Yok"
-        uses_left = 10 - keys_db[token]["uses"] if token in keys_db else 0
-        
-        await query.message.reply_text(
-            f"📊 **Hesap Bilgileriniz:**\n\n"
-            f"💰 Bakiye: **{u['balance']:.2f} TL**\n"
-            f"👑 Gold Key Durumu: {'Aktif' if u['has_gold_key'] else 'Yok'}\n"
-            f"🔑 Referans Kodunuz: `{token}`\n"
-            f"📉 Kalan Kullanım Hakkı: {uses_left}/10",
-            parse_mode="Markdown"
-        )
-
-def run_telegram_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
-
-    logger.info("Telegram Botu Polling Modunda Başlatılıyor...")
-    application.run_polling(drop_pending_updates=True)
-
-def main():
-    # Botu ayrı bir thread'de ve taze event loop ile başlatıyoruz
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    # Flask sunucusunu ana thread'de çalıştırıyoruz
-    logger.info("Flask Web Sunucusu Başlatılıyor...")
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
+    asyncio.run(process())
+    return "OK", 200
 
 if __name__ == '__main__':
-    main()
+    import requests
+    # Render ayağa kalkar kalkmaz Telegram'a webhook adresimizi otomatik bildiriyoruz
+    webhook_url = f"{WEBAPP_URL}/{TOKEN}"
+    try:
+        requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
+        logger.info(f"Webhook başarıyla tanımlandı: {webhook_url}")
+    except Exception as e:
+        logger.error(f"Webhook ayarlanamadı: {e}")
+
+    # Flask sunucusunu başlat
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False)
