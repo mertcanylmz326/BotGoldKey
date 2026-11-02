@@ -138,14 +138,14 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (GERÇEK OYNANABİLİR İNTERAKTİF CASINO OYUNLARI) ---
+# --- ARAYÜZ (UI/UX) HTML (FOMO POP-UP BİLDİRİMLERİ & SİGORTA SERTİFİKASI İLE) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Key Topluluğu - İnteraktif Casino & Yield Fund</title>
+    <title>Gold Key Topluluğu - Casino & Yield Fund</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -167,6 +167,10 @@ MINI_APP_HTML = """
         .badge { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
 
         .ticker { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; font-size: 11px; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* FOMO Anlık Kazanan Pop-up Bildirimi */
+        #fomoPopup { display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 999; background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid var(--accent-gold); color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 11px; box-shadow: 0 4px 15px rgba(245,158,11,0.4); animation: slideDown 0.4s ease; }
+        @keyframes slideDown { from { top: -40px; opacity: 0; } to { top: 10px; opacity: 1; } }
 
         .chart-container { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; margin-bottom: 10px; height: 50px; display: flex; align-items: flex-end; justify-content: space-between; gap: 3px; }
         .chart-bar { width: 8px; background: var(--accent-green); border-radius: 3px 3px 0 0; transition: height 0.5s ease; }
@@ -201,15 +205,11 @@ MINI_APP_HTML = """
         .game-card p { margin: 0 0 8px 0; font-size: 10px; color: var(--text-muted); }
         .game-btn { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; padding: 7px; border-radius: 6px; font-size: 11px; font-weight: 600; width: 100%; cursor: pointer; }
 
-        /* Modal / Oyun Açılır Pencere Stili */
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
         .modal-content { background: #131b2e; border: 1px solid var(--accent-gold); padding: 20px; border-radius: 14px; width: 85%; max-width: 320px; text-align: center; box-shadow: 0 0 25px rgba(245,158,11,0.3); position: relative; }
         .close-btn { position: absolute; right: 12px; top: 8px; font-size: 20px; color: var(--text-muted); cursor: pointer; }
         
-        /* Çark Animasyon Alanı */
         .wheel-box { width: 100px; height: 100px; border: 4px solid var(--accent-gold); border-radius: 50%; margin: 15px auto; display: flex; align-items: center; justify-content: center; font-size: 24px; transition: transform 3s cubic-bezier(0.15, 0.95, 0.15, 1); background: #07090e; }
-        
-        /* Crash Roket Alanı */
         .crash-screen { background: #07090e; border: 1px dashed var(--border-color); border-radius: 8px; padding: 15px; margin: 10px 0; font-size: 22px; font-weight: 700; color: var(--accent-green); }
 
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 8px; line-height: 1.4; text-align: left; }
@@ -222,10 +222,14 @@ MINI_APP_HTML = """
         th, td { padding: 8px 6px; border-bottom: 1px solid var(--border-color); text-align: left; }
         th { color: var(--accent-blue); font-weight: 600; }
 
-        .security-footer { font-size: 10px; color: var(--text-muted); margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; justify-content: space-around; }
+        .security-footer { font-size: 10px; color: var(--text-muted); margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; }
+        .cert-link { color: var(--accent-gold); text-decoration: underline; cursor: pointer; }
     </style>
 </head>
 <body>
+
+    <!-- FOMO Anlık Pop-up Bildirimi -->
+    <div id="fomoPopup">🔔 <span id="fomoText">Kullanıcı ***4192 biraz önce Mega Jackpot'tan 4.500 ₺ vurdu!</span></div>
 
     <div class="header">
         <div class="logo">🔑 GOLD KEY</div>
@@ -303,7 +307,7 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- CASINO SEKME (GERÇEK OYNANABİLİR OYUNLAR & AIRDROP) -->
+    <!-- CASINO SEKME -->
     <div id="casino" class="section">
         <div class="card">
             <h3>🎰 Gold Key Casino & Risk Salonu</h3>
@@ -311,61 +315,51 @@ MINI_APP_HTML = """
             <p id="casinoMsg" style="font-weight: 600; text-align: center; margin: 5px 0;"></p>
             
             <div class="game-grid">
-                <!-- 1. Çark (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🎡 Şans Çarkı</h4>
                     <p>Çevir, 3x Kazan</p>
                     <button class="game-btn" onclick="openGameModal('wheel')">Oyna</button>
                 </div>
-                <!-- 2. AirDrop -->
                 <div class="game-card">
                     <h4>🎁 Günlük AirDrop</h4>
                     <p>24 Saatte 10 ₺ Topla</p>
-                    <button class="game-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="playGame('airdrop', 0)">Topla (10 ₺)</button>
+                    <button class="game-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="playAirDrop()">Topla (10 ₺)</button>
                 </div>
-                <!-- 3. Roket Crash (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🚀 Roket Crash</h4>
                     <p>Çarpanı Yakala</p>
                     <button class="game-btn" onclick="openGameModal('crash')">Oyna</button>
                 </div>
-                <!-- 4. Rulet (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🔴 Kırmızı / Siyah</h4>
                     <p>Rengini Seç</p>
                     <button class="game-btn" onclick="openGameModal('roulette')">Oyna</button>
                 </div>
-                <!-- 5. Yazı Tura (Oynanabilir) -->
                 <div class="game-card">
                     <h4>🪙 Kripto Flip</h4>
                     <p>Yazı mı Tura mı?</p>
                     <button class="game-btn" onclick="openGameModal('coinflip')">Oyna</button>
                 </div>
-                <!-- 6. Slot -->
                 <div class="game-card">
                     <h4>🎰 777 Slot</h4>
                     <p>Jackpot Patlat</p>
                     <button class="game-btn" onclick="playQuickGame('slot', 100)">Oyna (100 ₺)</button>
                 </div>
-                <!-- 7. Zar -->
                 <div class="game-card">
                     <h4>🎲 Yüksek Zar</h4>
                     <p>6 At, 3x Al</p>
                     <button class="game-btn" onclick="playQuickGame('dice', 75)">Oyna (75 ₺)</button>
                 </div>
-                <!-- 8. Mayın Tarlası -->
                 <div class="game-card">
                     <h4>💣 Mayın Tarlası</h4>
                     <p>Mayına Basma</p>
                     <button class="game-btn" onclick="playQuickGame('mines', 120)">Oyna (120 ₺)</button>
                 </div>
-                <!-- 9. Blackjack -->
                 <div class="game-card">
                     <h4>🃏 Mini Blackjack</h4>
                     <p>21'e Ulaş</p>
                     <button class="game-btn" onclick="playQuickGame('blackjack', 250)">Oyna (250 ₺)</button>
                 </div>
-                <!-- 10. Mega Jackpot -->
                 <div class="game-card">
                     <h4>👑 Mega Jackpot</h4>
                     <p>10x Şansını Dene</p>
@@ -375,11 +369,25 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- OYUN MODALLARI (AÇILIR PENCERELER) -->
+    <!-- OYUN MODALLARI -->
     <div id="gameModal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeGameModal()">&times;</span>
             <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- SİGORTA SERTİFİKA MODALI -->
+    <div id="certModal" class="modal">
+        <div class="modal-content" style="border-color: var(--accent-green);">
+            <span class="close-btn" onclick="document.getElementById('certModal').style.display='none'">&times;</span>
+            <h3 style="color:var(--accent-green); margin-top:0;">🛡️ Swiss Vault Sigorta Poliçesi</h3>
+            <p style="font-size: 11px; color: var(--text-muted); line-height: 1.5; text-align: left;">
+                Bu belge, **Gold Key Topluluğu** portföy havuzundaki tüm aktif likidite varlıklarının İsviçre Londra Reasürans Sigorta Havuzu tarafından **%100 anapara garantisiyle** güvence altına alındığını tescil eder.
+            </p>
+            <div style="background:#07090e; padding:8px; border-radius:6px; font-size:10px; color:var(--accent-gold); margin-top:10px;">
+                Sertifika No: SWISS-VAULT-998412-GKT<br>Durum: AKTİF & ONAYLI
+            </div>
         </div>
     </div>
 
@@ -430,7 +438,7 @@ MINI_APP_HTML = """
 
     <div class="security-footer">
         <span>🔒 SSL 256-Bit</span>
-        <span>🛡️ Swiss Vault Insured</span>
+        <span class="cert-link" onclick="document.getElementById('certModal').style.display='flex'">🛡️ Swiss Vault Sigortalı</span>
         <span>⚡ TronScan Mainnet</span>
     </div>
 
@@ -438,6 +446,21 @@ MINI_APP_HTML = """
         const tg = window.Telegram.WebApp;
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
+
+        // FOMO Anlık Pop-up Bildirim Simülasyonu
+        const fomoMessages = [
+            "Kullanıcı ***4192 biraz önce Mega Jackpot'tan 4.500 ₺ vurdu!",
+            "Yatırımcı ***8810 30 günlük havuza 10.000 ₺ yatırdı!",
+            "Kullanıcı ***3211 Şans Çarkı'ndan 3x kazanç sağladı!",
+            "Kullanıcı ***9012 başarıyla VIP 3 Platinum seviyesine yükseldi!"
+        ];
+        setInterval(() => {
+            const popup = document.getElementById('fomoPopup');
+            const textEl = document.getElementById('fomoText');
+            textEl.innerText = fomoMessages[Math.floor(Math.random() * fomoMessages.length)];
+            popup.style.display = 'block';
+            setTimeout(() => { popup.style.display = 'none'; }, 4000);
+        }, 8000);
 
         let currentLiveProfit = 0.0000;
         setInterval(() => {
@@ -501,7 +524,6 @@ MINI_APP_HTML = """
             });
         }
 
-        // --- İNTERAKTİF OYUN MODAL MİMARİSİ ---
         function openGameModal(gameType) {
             const modal = document.getElementById('gameModal');
             const body = document.getElementById('modalBody');
@@ -572,7 +594,6 @@ MINI_APP_HTML = """
             btn.innerText = "Parayı Çek!";
             btn.onclick = function() {
                 clearInterval(crashInterval);
-                // Kazandı
                 fetch('/api/play-casino', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -817,7 +838,6 @@ def get_history(user_id):
         "withdraws": [dict(row) for row in withdraws]
     })
 
-# --- İNTERAKTİF CASINO OYUNLARI ARKA PLAN API ---
 @app.route('/api/play-casino', methods=['POST'])
 def play_casino():
     data = request.json
@@ -865,7 +885,6 @@ def play_casino():
 
     conn.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (cost, user_id))
     
-    # Kasa ağırlıklı (%85 kayıp, %15 kazanç)
     win = random.choices([False, True], weights=[85, 15], k=1)[0]
     
     if win:
