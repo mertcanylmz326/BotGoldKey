@@ -2,6 +2,7 @@ import os
 import logging
 import random
 import string
+import requests
 from flask import Flask, render_template_string, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
@@ -213,7 +214,7 @@ def use_referral_key():
     if owner_id in users_db: users_db[owner_id]["balance"] += 100.0
     return jsonify({"success": True, "message": "Tebrikler! 50 TL kazandın! 🎉"})
 
-# Telegram'dan gelen Webhook isteklerini yakalayan kritik rota
+# Telegram'dan gelen Webhook isteklerini yakalayan rota
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     import asyncio
@@ -226,8 +227,6 @@ def webhook():
     return "OK", 200
 
 if __name__ == '__main__':
-    import requests
-    # Render ayağa kalkar kalkmaz Telegram'a webhook adresimizi otomatik bildiriyoruz
     webhook_url = f"{WEBAPP_URL}/{TOKEN}"
     try:
         requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
@@ -235,5 +234,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"Webhook ayarlanamadı: {e}")
 
-    # Flask sunucusunu başlat
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False)
