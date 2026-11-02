@@ -3,6 +3,7 @@ import logging
 import random
 import string
 import threading
+import asyncio
 from flask import Flask, render_template_string, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
@@ -287,23 +288,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
-
-def main():
-    # Flask sunucusunu arka plandaki thread'de başlatıyoruz
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    logger.info("Flask Web Sunucusu Arka Planda Başlatıldı...")
-
-    # Telegram botunu ana thread üzerinde çalıştırıyoruz
+def run_telegram_bot():
+    # Python 3.14 için ayrı bir event loop oluşturup botu güvenle çalıştırıyoruz
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    logger.info("Telegram Botu Başlatılıyor...")
+    logger.info("Telegram Botu Arka Planda Başlatılıyor...")
     application.run_polling()
+
+def main():
+    # Telegram botunu ayrı bir thread'de başlatıyoruz
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+
+    # Flask web sunucusunu ana thread üzerinde çalıştırıyoruz (Render port isteğini karşılar)
+    logger.info("Flask Web Sunucusu Ana Thread Üzerinde Başlatıldı...")
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
 
 if __name__ == '__main__':
     main()
