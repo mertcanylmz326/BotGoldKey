@@ -17,14 +17,12 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "9101317558:AAEUpeDk9jCVgFrMm75UqKlUBePegs1C1Cs")
 
-# Basit Veri Tabanı Simülasyonu
-users_db = {}  # {user_id: {"balance": 0.0, "has_gold_key": False, "ref_token": None}}
-keys_db = {}   # {key_string: {"owner_id": id, "uses": 0, "max_uses": 10, "active": True}}
+# Veri tabanı simülasyonu
+users_db = {}  
+keys_db = {}   
 
 app = Flask(__name__)
-WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://senin-proje-adın.onrender.com")
-
-# --- HTML ŞABLONLARI ---
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://botgoldkey.onrender.com") # Kendi render linkin
 
 MINI_APP_HTML = """
 <!DOCTYPE html>
@@ -123,44 +121,20 @@ ADMIN_HTML = """
 </head>
 <body>
     <h1>🛠️ Bot Yönetim Paneli</h1>
-    
     <h2>Aktif Gold Keyler & Kullanım Hakları</h2>
     <table>
-        <tr>
-            <th>Key Kodu</th>
-            <th>Sahip ID</th>
-            <th>Kullanım</th>
-            <th>Max Hak</th>
-            <th>Durum</th>
-        </tr>
+        <tr><th>Key Kodu</th><th>Sahip ID</th><th>Kullanım</th><th>Max Hak</th><th>Durum</th></tr>
         {% for k, v in keys.items() %}
-        <tr>
-            <td><strong>{{ k }}</strong></td>
-            <td>{{ v.owner_id }}</td>
-            <td>{{ v.uses }}</td>
-            <td>{{ v.max_uses }}</td>
-            <td>{{ 'Aktif' if v.active else 'İptal / Doldu (10/10)' }}</td>
-        </tr>
+        <tr><td><strong>{{ k }}</strong></td><td>{{ v.owner_id }}</td><td>{{ v.uses }}</td><td>{{ v.max_uses }}</td><td>{{ 'Aktif' if v.active else 'İptal / Doldu (10/10)' }}</td></tr>
         {% else %}
         <tr><td colspan="5" style="text-align:center;">Henüz oluşturulmuş Gold Key yok.</td></tr>
         {% endfor %}
     </table>
-
     <h2 style="margin-top: 30px;">Kayıtlı Kullanıcılar & Bakiyeler</h2>
     <table>
-        <tr>
-            <th>User ID</th>
-            <th>Bakiye</th>
-            <th>Gold Key Durumu</th>
-            <th>Ref Token</th>
-        </tr>
+        <tr><th>User ID</th><th>Bakiye</th><th>Gold Key Durumu</th><th>Ref Token</th></tr>
         {% for uid, u in users.items() %}
-        <tr>
-            <td>{{ uid }}</td>
-            <td>{{ u.balance }} TL</td>
-            <td>{{ 'Var' if u.has_gold_key else 'Yok' }}</td>
-            <td>{{ u.ref_token or '-' }}</td>
-        </tr>
+        <tr><td>{{ uid }}</td><td>{{ u.balance }} TL</td><td>{{ 'Var' if u.has_gold_key else 'Yok' }}</td><td>{{ u.ref_token or '-' }}</td></tr>
         {% else %}
         <tr><td colspan="4" style="text-align:center;">Henüz kayıtlı kullanıcı yok.</td></tr>
         {% endfor %}
@@ -168,8 +142,6 @@ ADMIN_HTML = """
 </body>
 </html>
 """
-
-# --- FLASK ROTALARI ---
 
 @app.route('/')
 def mini_app():
@@ -213,8 +185,6 @@ def use_referral_key():
         users_db[owner_id]["balance"] += 100.0
 
     return jsonify({"success": True, "message": "Tebrikler! Kod başarıyla uygulandı, 50 TL kazandın! 🎉"})
-
-# --- TELEGRAM BOT KOMUTLARI ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -289,7 +259,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 def run_telegram_bot():
-    # Python 3.14 için ayrı bir event loop oluşturup botu güvenle çalıştırıyoruz
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -297,16 +266,16 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    logger.info("Telegram Botu Arka Planda Başlatılıyor...")
-    application.run_polling()
+    logger.info("Telegram Botu Polling Modunda Başlatılıyor...")
+    application.run_polling(drop_pending_updates=True)
 
 def main():
-    # Telegram botunu ayrı bir thread'de başlatıyoruz
+    # Botu ayrı bir thread'de ve taze event loop ile başlatıyoruz
     bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
     bot_thread.start()
 
-    # Flask web sunucusunu ana thread üzerinde çalıştırıyoruz (Render port isteğini karşılar)
-    logger.info("Flask Web Sunucusu Ana Thread Üzerinde Başlatıldı...")
+    # Flask sunucusunu ana thread'de çalıştırıyoruz
+    logger.info("Flask Web Sunucusu Başlatılıyor...")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
 
 if __name__ == '__main__':
