@@ -138,14 +138,14 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (YATIRIMLARIM & ÇEKİMLERİM SEKÇMELİ) ---
+# --- ARAYÜZ (UI/UX) HTML (CASINO SEKMESİ VE 10 RİSK OYUNU) ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Key Topluluğu - High Yield Fund</title>
+    <title>Gold Key Topluluğu - Casino & Yield Fund</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -156,6 +156,7 @@ MINI_APP_HTML = """
             --accent-gold: #f59e0b;
             --accent-green: #10b981;
             --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -194,13 +195,15 @@ MINI_APP_HTML = """
         button.primary-btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 11px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%; margin-top: 10px; box-shadow: 0 4px 12px rgba(59,130,246,0.4); transition: opacity 0.2s; }
         button.primary-btn:hover { opacity: 0.9; }
 
+        .game-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .game-card { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; text-align: center; }
+        .game-card h4 { margin: 0 0 5px 0; font-size: 12px; color: var(--accent-gold); }
+        .game-card p { margin: 0 0 8px 0; font-size: 10px; color: var(--text-muted); }
+        .game-btn { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; padding: 6px; border-radius: 6px; font-size: 11px; font-weight: 600; width: 100%; cursor: pointer; }
+
         .warning-box { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px; border-radius: 8px; font-size: 11px; color: #fbbf24; margin-top: 8px; line-height: 1.4; text-align: left; }
         .wallet-box { background: #07090e; border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent-blue); margin-top: 6px; text-align: center; font-family: monospace; }
         
-        .chat-box { background: #07090e; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; height: 110px; overflow-y: auto; font-size: 11px; text-align: left; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
-        .chat-msg { background: #131b2e; padding: 6px 10px; border-radius: 6px; color: #cbd5e1; }
-        .chat-msg span { color: var(--accent-gold); font-weight: 600; }
-
         .success { color: var(--accent-green); margin-top: 8px; font-weight: 600; font-size: 12px; text-align: center; }
         .error { color: #ef4444; margin-top: 8px; font-weight: 600; font-size: 12px; text-align: center; }
 
@@ -218,7 +221,7 @@ MINI_APP_HTML = """
         <div class="badge" id="vipBadge">VIP 1 (Silver)</div>
     </div>
     
-    <div class="ticker" id="tickerText">🔔 Gold Key Fonu: Küresel likidite akışı aktif, saniyelik kar dağıtımı başladı.</div>
+    <div class="ticker" id="tickerText">🔔 Gold Key Casino: Risk masaları açıldı, şansını dene bakiyeni katla veya bat!</div>
 
     <div class="chart-container" id="liveChart">
         <div class="chart-bar" style="height: 30%;"></div>
@@ -236,13 +239,12 @@ MINI_APP_HTML = """
     <div class="nav-tabs">
         <button class="tab-btn active" onclick="showTab('wallet', this)">Cüzdan</button>
         <button class="tab-btn" onclick="showTab('invest', this)">Havuzlar</button>
+        <button class="tab-btn" onclick="showTab('casino', this)">🎰 CASINO</button>
         <button class="tab-btn" onclick="showTab('history', this)">İşlemlerim</button>
-        <button class="tab-btn" onclick="showTab('wheel', this)">Çark</button>
-        <button class="tab-btn" onclick="showTab('bonus', this)">Airdrop</button>
         <button class="tab-btn" onclick="showTab('leaderboard', this)">Liderler</button>
     </div>
 
-    <!-- CÜZDAN SEKMESİ -->
+    <!-- CÜZDAN SEKME -->
     <div id="wallet" class="section active-section">
         <div class="card">
             <h3>Portföy Özeti <span style="font-size: 10px; color: var(--accent-green);">● Canlı Senkronize</span></h3>
@@ -274,7 +276,95 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- YATIRIMLARIM & ÇEKİMLERİM GEÇMİŞİ -->
+    <!-- YATIRIM HAVUZLARI -->
+    <div id="invest" class="section">
+        <div class="card">
+            <h3>🚀 Kademeli Likidite Havuzları</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Süre bitimi otomatik ödenir, saniyelik kar üretir:</p>
+            <input type="number" id="investAmountInput" placeholder="Yatırım Tutarı (₺)" style="margin-bottom: 8px;">
+            <select id="investTierSelect">
+                <option value="7">7 Günlük Vade (%15 Toplam Getiri)</option>
+                <option value="15">15 Günlük Vade (%35 Toplam Getiri)</option>
+                <option value="30" selected>30 Günlük Kurumsal Vade (%80 Toplam Getiri)</option>
+            </select>
+            <button class="primary-btn" onclick="investTierPackage()">Havuz Vadesini Başlat</button>
+            <p id="investMsg" class="warning"></p>
+        </div>
+    </div>
+
+    <!-- YENİ 10 OYUNLUK CASINO SEKMESİ -->
+    <div id="casino" class="section">
+        <div class="card">
+            <h3>🎲 Gold Key Casino & Risk Salonu</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Airdrop dahil 10 farklı risk oyununda şansınızı deneyin, bakiyenizi katlayın veya kasaya bırakın!</p>
+            <p id="casinoMsg" style="font-weight: 600; text-align: center; margin: 5px 0;"></p>
+            
+            <div class="game-grid">
+                <!-- 1. Çark -->
+                <div class="game-card">
+                    <h4>🎡 Şans Çarkı</h4>
+                    <p>50 ₺ Yatır, 3x Kazan</p>
+                    <button class="game-btn" onclick="playGame('wheel', 50)">Çevir (50 ₺)</button>
+                </div>
+                <!-- 2. AirDrop -->
+                <div class="game-card">
+                    <h4>🎁 Günlük AirDrop</h4>
+                    <p>24 Saatte 10 ₺ Topla</p>
+                    <button class="game-btn" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="playGame('airdrop', 0)">Topla (10 ₺)</button>
+                </div>
+                <!-- 3. Slot Makinesi -->
+                <div class="game-card">
+                    <h4>🎰 777 Slot</h4>
+                    <p>100 ₺ At, Jackpot Patlat</p>
+                    <button class="game-btn" onclick="playGame('slot', 100)">Oyna (100 ₺)</button>
+                </div>
+                <!-- 4. Crash Oyunu -->
+                <div class="game-card">
+                    <h4>🚀 Roket Crash</h4>
+                    <p>200 ₺ Yatır, Patlamadan Çek</p>
+                    <button class="game-btn" onclick="playGame('crash', 200)">Uçur (200 ₺)</button>
+                </div>
+                <!-- 5. Rulet -->
+                <div class="game-card">
+                    <h4>🔴 Kırmızı / Siyah</h4>
+                    <p>150 ₺ Bas, Rengi Seç</p>
+                    <button class="game-btn" onclick="playGame('roulette', 150)">Oyna (150 ₺)</button>
+                </div>
+                <!-- 6. Zar Atma -->
+                <div class="game-card">
+                    <h4>🎲 Yüksek Zar</h4>
+                    <p>75 ₺ Bas, 6 At Kazan</p>
+                    <button class="game-btn" onclick="playGame('dice', 75)">Zar At (75 ₺)</button>
+                </div>
+                <!-- 7. Maden Kazı (Mines) -->
+                <div class="game-card">
+                    <h4>💣 Mayın Tarlası</h4>
+                    <p>120 ₺ Bas, Mayına Basma</p>
+                    <button class="game-btn" onclick="playGame('mines', 120)">Kazı (120 ₺)</button>
+                </div>
+                <!-- 8. Blackjack Çatışması -->
+                <div class="game-card">
+                    <h4>🃏 Mini Blackjack</h4>
+                    <p>250 ₺ Bas, 21'e Ulaş</p>
+                    <button class="game-btn" onclick="playGame('blackjack', 250)">Dağıt (250 ₺)</button>
+                </div>
+                <!-- 9. Kripto Flip -->
+                <div class="game-card">
+                    <h4>🪙 Yazı Tura Kripto</h4>
+                    <p>100 ₺ Bas, İkiye Katla</p>
+                    <button class="game-btn" onclick="playGame('coinflip', 100)">At (100 ₺)</button>
+                </div>
+                <!-- 10. Mega Jackpot -->
+                <div class="game-card">
+                    <h4>👑 Mega Jackpot</h4>
+                    <p>500 ₺ Bas, 10x Vur</p>
+                    <button class="game-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="playGame('jackpot', 500)">Şansını Dene</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- İŞLEMLERİM SEKME -->
     <div id="history" class="section">
         <div class="card">
             <h3>📊 Aktif Vade Yatırımlarım</h3>
@@ -297,43 +387,7 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- KADEMELİ YATIRIM HAVUZLARI -->
-    <div id="invest" class="section">
-        <div class="card">
-            <h3>🚀 Kademeli Likidite Havuzları</h3>
-            <p style="font-size: 11px; color: var(--text-muted);">Süre bitimi otomatik ödenir, saniyelik kar üretir:</p>
-            <input type="number" id="investAmountInput" placeholder="Yatırım Tutarı (₺)" style="margin-bottom: 8px;">
-            <select id="investTierSelect">
-                <option value="7">7 Günlük Vade (%15 Toplam Getiri)</option>
-                <option value="15">15 Günlük Vade (%35 Toplam Getiri)</option>
-                <option value="30" selected>30 Günlük Kurumsal Vade (%80 Toplam Getiri)</option>
-            </select>
-            <button class="primary-btn" onclick="investTierPackage()">Havuz Vadesini Başlat</button>
-            <p id="investMsg" class="warning"></p>
-        </div>
-    </div>
-
-    <!-- ŞANS ÇARKI -->
-    <div id="wheel" class="section">
-        <div class="card" style="text-align: center;">
-            <h3>🎡 Likidite Risk Çarkı</h3>
-            <p style="font-size: 12px; color: var(--text-muted);">50 ₺ bakiye ile havuz risk optimizasyonuna katılın, 3x kazanın.</p>
-            <button class="primary-btn" style="background: linear-gradient(135deg, #ef4444, #dc2626);" onclick="spinWheel()">Risk Çarkını Çevir (50 ₺)</button>
-            <p id="wheelMsg" style="margin-top: 10px; font-weight: 600;"></p>
-        </div>
-    </div>
-
-    <!-- BONUS -->
-    <div id="bonus" class="section">
-        <div class="card" style="text-align: center;">
-            <h3>🎁 Günlük Havuz Dağıtım Payı</h3>
-            <p style="font-size: 12px; color: var(--text-muted);">Sistem aktiflik ödülü olarak her 24 saatte 10 ₺ talep edin.</p>
-            <button id="bonusBtn" class="primary-btn" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);" onclick="claimBonus()">Günlük Ödülü Al</button>
-            <p id="bonusMsg"></p>
-        </div>
-    </div>
-
-    <!-- LİDERLİK & SON ÖDEMELER TABLOSU -->
+    <!-- LİDERLER SEKME -->
     <div id="leaderboard" class="section">
         <div class="card">
             <h3>🏆 Son Ödemeler (4-7 İş Günü Transferleri)</h3>
@@ -428,6 +482,19 @@ MINI_APP_HTML = """
             });
         }
 
+        function playGame(gameType, cost) {
+            fetch('/api/play-casino', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, game: gameType, cost: cost })
+            }).then(res => res.json()).then(data => {
+                const msg = document.getElementById('casinoMsg');
+                msg.innerText = data.message;
+                msg.className = data.success ? "success" : "error";
+                if(data.success || data.balance_updated) loadData();
+            });
+        }
+
         function verifyDeposit() {
             if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             const txHash = document.getElementById('txHashInput').value.trim();
@@ -462,19 +529,6 @@ MINI_APP_HTML = """
             });
         }
 
-        function spinWheel() {
-            fetch('/api/spin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId })
-            }).then(res => res.json()).then(data => {
-                const msg = document.getElementById('wheelMsg');
-                msg.innerText = data.message;
-                msg.className = data.success ? "success" : "error";
-                if(data.success) loadData();
-            });
-        }
-
         function requestWithdraw() {
             const iban = document.getElementById('ibanInput').value.trim();
             const msg = document.getElementById('withdrawMsg');
@@ -488,21 +542,6 @@ MINI_APP_HTML = """
                 msg.className = data.success ? "success" : "error";
                 if(data.success) loadData();
             });
-        }
-
-        function claimBonus() {
-            const btn = document.getElementById('bonusBtn');
-            btn.disabled = true;
-            fetch('/api/bonus', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId })
-            }).then(res => res.json()).then(data => {
-                const msg = document.getElementById('bonusMsg');
-                msg.innerText = data.message;
-                msg.className = data.success ? "success" : "error";
-                if(data.success) { loadData(); } else { btn.disabled = false; }
-            }).catch(() => { btn.disabled = false; });
         }
 
         function loadLeaderboard() {
@@ -616,6 +655,59 @@ def get_history(user_id):
         "withdraws": [dict(row) for row in withdraws]
     })
 
+# --- CASINO OYUNLARI API (10 Farklı Oyun, Kasa Kazanır Mantığı) ---
+@app.route('/api/play-casino', methods=['POST'])
+def play_casino():
+    data = request.json
+    user_id = int(data.get('user_id', 0))
+    game = data.get('game', '')
+    cost = float(data.get('cost', 0))
+    
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+    
+    if game == 'airdrop':
+        # Airdrop özel kontrolü (24 saatte 1)
+        now = datetime.datetime.now()
+        if user and user["last_bonus"]:
+            last_bonus_time = datetime.datetime.strptime(user["last_bonus"], '%Y-%m-%d %H:%M:%S')
+            if now - last_bonus_time < datetime.timedelta(hours=24):
+                remaining = datetime.timedelta(hours=24) - (now - last_bonus_time)
+                hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+                minutes, _ = divmod(remainder, 60)
+                conn.close()
+                return jsonify({"success": False, "message": f"🎁 AirDrop için kalan süre: {hours}s {minutes}dk"})
+        
+        if not user:
+            conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+        
+        conn.execute("UPDATE users SET balance = balance + 10, last_bonus = ? WHERE user_id=?", (now.strftime('%Y-%m-%d %H:%M:%S'), user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "🎉 Günlük 10 ₺ AirDrop ödülü hesabınıza eklendi!", "balance_updated": True})
+
+    # Diğer kumar oyunları için bakiye kontrolü
+    if not user or user["balance"] < cost:
+        conn.close()
+        return jsonify({"success": False, "message": f"⚠️ Bu oyun için yetersiz bakiye ({cost} ₺ gerekli)!"})
+
+    # Oyundan düş
+    conn.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (cost, user_id))
+    
+    # %85 ihtimalle kaybetme, %15 ihtimalle kazanma (Kasa her zaman kazanır)
+    win = random.choices([False, True], weights=[85, 15], k=1)[0]
+    
+    if win:
+        reward = cost * 2.5
+        conn.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": f"🎰 TEBRİKLER! {game.upper} oyununu kazandın! +{reward:.2f} ₺ eklendi.", "balance_updated": True})
+    else:
+        conn.commit()
+        conn.close()
+        return jsonify({"success": False, "message": f"😢 {game.upper} masasında kaybettin! -{cost} ₺ kasa tarafından alındı.", "balance_updated": True})
+
 @app.route('/api/verify-deposit', methods=['POST'])
 def verify_deposit():
     data = request.json
@@ -669,27 +761,6 @@ def invest_tier():
     
     return jsonify({"success": True, "message": f"Tebrikler! {amount} ₺ tutarındaki {days} günlük kurumsal havuz vadesi başlatıldı. Bitiş: {end_time_str}"})
 
-@app.route('/api/spin', methods=['POST'])
-def spin():
-    data = request.json
-    user_id = int(data.get('user_id', 0))
-    conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-    if not user or user["balance"] < 50.0:
-        conn.close()
-        return jsonify({"success": False, "message": "Yetersiz bakiye (Min 50 ₺)!"})
-
-    conn.execute("UPDATE users SET balance = balance - 50 WHERE user_id=?", (user_id,))
-    if random.choices(["lose", "win"], weights=[80, 20], k=1)[0] == "win":
-        conn.execute("UPDATE users SET balance = balance + 150 WHERE user_id=?", (user_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True, "message": "🎉 Çarkı kazandınız! 150 ₺ eklendi."})
-    else:
-        conn.commit()
-        conn.close()
-        return jsonify({"success": False, "message": "😢 Risk optimizasyonunda kaybettiniz."})
-
 @app.route('/api/withdraw', methods=['POST'])
 def withdraw():
     data = request.json
@@ -717,31 +788,6 @@ def withdraw():
     
     send_admin_notification(f"⚠️ Yeni Çekim Talebi Alındı (4-7 İş Günü):\nKullanıcı ID: `{user_id}`\nTutar: `{user['balance']} ₺`\nCüzdan: `{iban}`")
     return jsonify({"success": True, "message": "✅ Çekim talebiniz başarıyla oluşturulmuştur. 4-7 iş günü içerisinde cüzdanınıza aktarılacaktır."})
-
-@app.route('/api/bonus', methods=['POST'])
-def bonus():
-    data = request.json
-    user_id = int(data.get('user_id', 0))
-    conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-    
-    now = datetime.datetime.now()
-    if user and user["last_bonus"]:
-        last_bonus_time = datetime.datetime.strptime(user["last_bonus"], '%Y-%m-%d %H:%M:%S')
-        if now - last_bonus_time < datetime.timedelta(hours=24):
-            remaining = datetime.timedelta(hours=24) - (now - last_bonus_time)
-            hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-            minutes, _ = divmod(remainder, 60)
-            conn.close()
-            return jsonify({"success": False, "message": f"Bugünkü payı aldınız. Kalan süre: {hours}s {minutes}dk"})
-
-    if not user:
-        conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
-
-    conn.execute("UPDATE users SET balance = balance + 10, last_bonus = ? WHERE user_id=?", (now.strftime('%Y-%m-%d %H:%M:%S'), user_id))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True, "message": "Günlük 10 ₺ havuz payı eklendi."})
 
 @app.route('/api/leaderboard')
 def leaderboard():
@@ -785,7 +831,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     await update.message.reply_text(
-        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı. Çekim yapabilmek için öncelikle bot üzerinden Gas Fee yatırmanız gerekmektedir.",
+        f"Hoş geldiniz {user.first_name}!\n\n👑 **Gold Key Topluluğu** resmi yatırım ve casino botuna hoş geldiniz. 100 ₺ Hoş Geldin Bonusu hesabınıza tanımlandı.",
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
     )
 
@@ -848,7 +894,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         existing_tx = conn.execute("SELECT * FROM payments WHERE tx_hash=?", (text,)).fetchone()
         if existing_tx:
             conn.close()
-            await update.message.reply_text("❌ Bu TxID Hash kodu daha önce kullanılmış!", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text("❌ This TxID Hash has already been used!", reply_markup=InlineKeyboardMarkup(keyboard))
             return
             
         if state == "waiting_deposit_tx":
@@ -869,7 +915,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         send_admin_notification(f"✅ Bot Üzerinden {action_name} Onaylandı!\nKullanıcı ID: `{user.id}`\nTxID: `{text}`")
         
         await update.message.reply_text(
-            f"🎉 **{action_name} Başarıyla Onaylandı!**\n\nGirmiş olduğunuz hash kodu blokzincir üzerinde doğrulandı. Artık çekim talebinde bulunabilirsiniz.",
+            f"🎉 **{action_name} Başarıyla Onaylandı!**\n\nGirmiş olduğunuz hash kodu blokzincir üzerinde doğrulandı.",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
         )
     else:
