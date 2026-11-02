@@ -2,6 +2,7 @@ import os
 import logging
 import random
 import string
+import threading
 from flask import Flask, render_template_string, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
@@ -20,10 +21,9 @@ users_db = {}  # {user_id: {"balance": 0.0, "has_gold_key": False, "ref_token": 
 keys_db = {}   # {key_string: {"owner_id": id, "uses": 0, "max_uses": 10, "active": True}}
 
 app = Flask(__name__)
-# Render'da deploy ettikten sonra buraya Render'ın verdiği URL'yi yazabilirsin (Örn: https://bot-adi.onrender.com)
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://senin-proje-adın.onrender.com")
 
-# --- HTML ŞABLONLARI (Python İçine Gömülü) ---
+# --- HTML ŞABLONLARI ---
 
 MINI_APP_HTML = """
 <!DOCTYPE html>
@@ -202,12 +202,10 @@ def use_referral_key():
     if key_info["owner_id"] == user_id:
         return jsonify({"success": False, "message": "Kendi referans kodunu kullanamazsın!"})
 
-    # Kullanımı işle
     key_info["uses"] += 1
     if key_info["uses"] >= 10:
-        key_info["active"] = False # 10 defa dolunca kod iptal olur
+        key_info["active"] = False
         
-    # Ödemeler: Girene 50 TL, Sahibine 100 TL
     users_db[user_id]["balance"] += 50.0
     owner_id = key_info["owner_id"]
     if owner_id in users_db:
@@ -256,7 +254,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "confirm_payment":
-        # Yeni Gold Key üretimi
         random_key = "GOLD-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         users_db[user_id]["has_gold_key"] = True
         users_db[user_id]["ref_token"] = random_key
@@ -290,20 +287,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
+
 def main():
+    # Flask sunucusunu arka plandaki thread'de başlatıyoruz
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    logger.info("Flask Web Sunucusu Arka Planda Başlatıldı...")
+
+    # Telegram botunu ana thread üzerinde çalıştırıyoruz
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # Flask'ı arka planda (thread içinde) başlat
-    import threading
-    flask_thread = threading.Thread(
-        target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False, use_reloader=False)
-    )
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    logger.info("Bot ve Flask Web Sunucusu Tek Dosya Üzerinden Başlatıldı...")
+    logger.info("Telegram Botu Başlatılıyor...")
     application.run_polling()
 
 if __name__ == '__main__':
