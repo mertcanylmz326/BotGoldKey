@@ -7,6 +7,7 @@ import datetime
 import requests
 import threading
 import time
+import asyncio
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -26,6 +27,25 @@ REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-1001234567890") # Tele
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "guvenli_ve_rastgele_uretilen_oturum_anahtari_9988")
+
+# Telegram Uygulamasını Yapılandır (Webhook için updater=None)
+telegram_app = Application.builder().token(TOKEN).updater(None).build()
+
+# Arka planda kalıcı Telegram event loop'u çalıştır (Botun donmasını engeller)
+telegram_loop = asyncio.new_event_loop()
+
+def run_telegram_loop(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+threading.Thread(target=run_telegram_loop, args=(telegram_loop,), daemon=True).start()
+
+async def init_telegram_app():
+    await telegram_app.initialize()
+    await telegram_app.start()
+
+future_init = asyncio.run_coroutine_threadsafe(init_telegram_app(), telegram_loop)
+future_init.result()
 
 # --- VERİTABANI YÖNETİMİ ---
 def init_db():
@@ -1289,19 +1309,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         conn.close()
 
-telegram_app = Application.builder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    import asyncio
-    async def process():
-        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        await telegram_app.initialize()
-        await telegram_app.process_update(update)
-    asyncio.run(process())
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, telegram_app.bot)
+        
+        async def process():
+            await telegram_app.process_update(update)
+
+        future = asyncio.run_coroutine_threadsafe(process(), telegram_loop)
+        future.result(timeout=15)
+    except Exception as e:
+        logger.error(f"Webhook Hatası: {e}")
     return "OK", 200
 
 if __name__ == '__main__':
