@@ -155,7 +155,7 @@ def background_workers():
 
 threading.Thread(target=background_workers, daemon=True).start()
 
-# --- ARAYÜZ (UI/UX) HTML (SERTİfİKA GÖRSELİ DÜZELTİLMİŞ HALİ) ---
+# --- ARAYÜZ (UI/UX) HTML ---
 MINI_APP_HTML = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -252,7 +252,6 @@ MINI_APP_HTML = """
 </head>
 <body>
 
-    <!-- HASH İLE GİRİŞ EKRANI (İLK AÇILIŞ) -->
     <div id="hashLoginScreen">
         <div class="login-box">
             <h3 style="color:var(--accent-gold); margin-top:0;">🔑 Güvenli Hash Girişi</h3>
@@ -263,7 +262,6 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- GÜVENLİK DUVARI (VPN VEYA GRUP ENGELİ) -->
     <div id="securityWall">
         <div class="wall-card">
             <h3 style="color: var(--accent-red); margin-top:0;">🛡️ Güvenlik Doğrulaması</h3>
@@ -309,7 +307,6 @@ MINI_APP_HTML = """
         <button class="tab-btn" onclick="showTab('leaderboard', this)">Liderler</button>
     </div>
 
-    <!-- CÜZDAN SEKME -->
     <div id="wallet" class="section active-section">
         <div class="card">
             <h3>Portföy Özeti <span style="font-size: 10px; color: var(--accent-green);">● Canlı Senkronize</span></h3>
@@ -341,7 +338,6 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- YATIRIM HAVUZLARI -->
     <div id="invest" class="section">
         <div class="card">
             <h3>🚀 Kademeli Likidite Havuzları</h3>
@@ -357,7 +353,6 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- CASINO SEKME -->
     <div id="casino" class="section">
         <div class="card">
             <h3>🎰 Gold Key Casino & Risk Salonu</h3>
@@ -419,7 +414,6 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- OYUN MODALLARI -->
     <div id="gameModal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeGameModal()">&times;</span>
@@ -427,20 +421,17 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- GERÇEK SERTİFİKA FOTOĞRAFI MODALI (DÜZELTİLMİŞ GÖRSEL KAPSAYICI) -->
     <div id="certModal" class="modal">
         <div class="modal-content" style="border-color: var(--accent-gold); background: #0b0f19; padding: 12px;">
             <span class="close-btn" onclick="document.getElementById('certModal').style.display='none'">&times;</span>
             <h3 style="color:var(--accent-gold); margin: 5px 0 10px 0; font-size: 13px;">🛡️ Swiss Vault Resmi Sigorta Poliçesi</h3>
             <div style="width: 100%; height: 260px; border: 2px solid var(--accent-gold); border-radius: 8px; overflow: hidden; background: #000 url('https://imgyukle.com/i/SIb30Q') no-repeat center center; background-size: contain; display: flex; justify-content: center; align-items: center;">
-                <!-- Yedekli doğrudan img tagi ve stil optimizasyonu -->
                 <img src="https://imgyukle.com/i/SIb30Q" alt="Swiss Vault Sigorta Poliçesi" style="width: 100%; height: 100%; object-fit: contain; display: block;" onerror="this.style.display='none'">
             </div>
             <p style="font-size: 10px; color: var(--text-muted); margin-top: 8px;">Tüm likidite varlıklarınız İsviçre Londra Havuzu güvencesindedir.</p>
         </div>
     </div>
 
-    <!-- İŞLEMLERİM SEKME -->
     <div id="history" class="section">
         <div class="card">
             <h3>📊 Aktif Vade Yatırımlarım</h3>
@@ -463,7 +454,6 @@ MINI_APP_HTML = """
         </div>
     </div>
 
-    <!-- LİDERLER SEKME -->
     <div id="leaderboard" class="section">
         <div class="card">
             <h3>🏆 Son Ödemeler (4-7 İş Günü Transferleri)</h3>
